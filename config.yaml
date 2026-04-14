@@ -1,0 +1,7 @@
+default_platform: claude-code
+log_level: INFO
+critical_tools:
+  - lark-cli
+  - glab
+  - gh
+  - docker

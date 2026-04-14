@@ -1,0 +1,238 @@
+#!/usr/bin/env python3
+"""
+AgentFlow Thinking Chain Enforcer — PreToolUse hook
+强制思维链执行模式（硬性要求）：
+  思考 → 搜索解决方案 → 确认方案 → 执行 → 验证 → 未解决则继续思考
+
+核心机制：
+  Agent 搜索了 Skills/Wiki → search-tracker.py 创建 .search-done 标记
+  Agent 执行代码修改 → 本 hook 检查标记 → 无标记 = 没搜索 = 阻断
+
+按复杂度分级调整行为（v2.0 新增）：
+  Simple:  搜索标记有效期 30 分钟，首次违规软提醒（不阻断）
+  Medium:  搜索标记有效期 10 分钟，硬阻断（默认行为）
+  Complex: 搜索标记有效期 5 分钟，硬阻断
+
+仅对代码文件修改和执行命令生效，不影响读取/搜索操作。
+"""
+import json
+import os
+import sys
+import time
+
+MARKER_FILE = ".agent-flow/state/.search-done"
+COMPLEXITY_FILE = ".agent-flow/state/.complexity-level"
+
+# 各复杂度的搜索标记有效期（秒）
+MAX_SEARCH_AGE_MAP = {
+    "simple": 1800,   # 30 分钟
+    "medium": 600,    # 10 分钟
+    "complex": 300,   # 5 分钟
+}
+DEFAULT_MAX_SEARCH_AGE = 600  # 默认 Medium
+
+# 代码文件扩展名
+CODE_EXTENSIONS = {
+    ".ts", ".tsx", ".js", ".jsx", ".py", ".rs", ".go", ".java", ".kt",
+    ".swift", ".m", ".h", ".c", ".cpp", ".rb", ".php", ".vue", ".svelte",
+    ".css", ".scss", ".less", ".html", ".sql", ".graphql",
+    ".sh", ".bash", ".zsh",
+}
+
+CODE_FILENAMES = {
+    "package.json", "tsconfig.json", "Makefile", "Dockerfile",
+    "Podfile", "Gemfile", "build.gradle", "settings.gradle",
+    "app.json", "babel.config.js", "metro.config.js",
+}
+
+# 允许写入的路径（不受思维链检查限制）
+ALLOWED_PATH_PREFIXES = (".agent-flow", ".dev-workflow", ".claude")
+
+# 只读 Bash 命令前缀（不需要搜索标记）
+READONLY_BASH_PREFIXES = (
+    "ls", "cat", "head", "tail", "find", "grep", "rg", "wc",
+    "which", "pwd", "whoami", "uname", "env", "printenv", "echo",
+    "type ", "command ",
+    "git status", "git log", "git diff", "git branch",
+    "git remote", "git rev-parse", "git show",
+    "git stash", "git worktree", "git checkout", "git switch",
+    "git pull", "git fetch",
+    "lark-cli", "agent-flow",
+    "python3 -c", "node -e",
+    # 系统管理命令（非代码修改）
+    "mkdir", "chmod", "touch", "cp", "mv", "ln",
+    "tar", "zip", "unzip", "xxd",
+)
+
+# 思维链提示信息
+CHAIN_PROMPT = """[AgentFlow BLOCKED] 思维链未完成 — 你没有先搜索知识库就尝试执行！
+
+必须按思维链执行（硬性要求，不可跳过）:
+  ┌─────────────────────────────────────────┐
+  │ 1. 思考   : 分析问题，明确要做什么       │
+  │ 2. 搜索   : Grep 搜索 Skills/Wiki       │
+  │ 3. 确认   : 找到 Skill → 按 Procedure   │
+  │            未找到 → 询问用户             │
+  │ 4. 执行   : 按方案执行操作              │
+  │ 5. 验证   : 检查是否解决                │
+  │ 6. 未解决 → 回到步骤 1（禁止推测）       │
+  └─────────────────────────────────────────┘
+
+请先执行搜索:
+  Grep '关键词' ~/.agent-flow/skills/ 和 .agent-flow/skills/
+  Grep '关键词' ~/.agent-flow/wiki/pitfalls/"""
+
+
+def get_complexity_level() -> str:
+    """读取当前任务的复杂度等级"""
+    if not os.path.isfile(COMPLEXITY_FILE):
+        return "medium"  # 默认 Medium
+    try:
+        with open(COMPLEXITY_FILE, "r", encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if line.startswith("level="):
+                    level = line.split("=", 1)[1].strip().lower()
+                    if level in ("simple", "medium", "complex"):
+                        return level
+    except Exception:
+        pass
+    return "medium"
+
+
+def get_max_search_age() -> int:
+    """根据复杂度获取搜索标记有效期"""
+    level = get_complexity_level()
+    return MAX_SEARCH_AGE_MAP.get(level, DEFAULT_MAX_SEARCH_AGE)
+
+
+def is_first_violation() -> bool:
+    """检查是否为首次违规（用于 Simple 任务的软提醒模式）"""
+    violation_marker = ".agent-flow/state/.chain-violation-count"
+    if not os.path.isfile(violation_marker):
+        return True
+    try:
+        with open(violation_marker, "r", encoding="utf-8") as f:
+            count = int(f.read().strip())
+            return count == 0
+    except Exception:
+        return True
+
+
+def record_violation():
+    """记录违规次数"""
+    violation_marker = ".agent-flow/state/.chain-violation-count"
+    os.makedirs(os.path.dirname(violation_marker), exist_ok=True)
+    count = 0
+    if os.path.isfile(violation_marker):
+        try:
+            with open(violation_marker, "r", encoding="utf-8") as f:
+                count = int(f.read().strip())
+        except Exception:
+            count = 0
+    with open(violation_marker, "w", encoding="utf-8") as f:
+        f.write(str(count + 1))
+
+
+def is_code_file(file_path: str) -> bool:
+    """判断是否为代码文件（需要搜索标记）"""
+    for prefix in ALLOWED_PATH_PREFIXES:
+        if prefix in file_path:
+            return False
+    _, ext = os.path.splitext(file_path)
+    if ext.lower() in (".md", ".txt", ".rst", ".adoc"):
+        return False
+    if ext.lower() in CODE_EXTENSIONS:
+        return True
+    if os.path.basename(file_path) in CODE_FILENAMES:
+        return True
+    return False
+
+
+def is_readonly_bash(command: str) -> bool:
+    """判断 Bash 命令是否为只读（不需要搜索标记）"""
+    cmd = command.strip()
+    for prefix in READONLY_BASH_PREFIXES:
+        if cmd.startswith(prefix):
+            return True
+    return False
+
+
+def has_recent_search() -> bool:
+    """检查是否有近期的搜索标记（根据复杂度调整有效期）"""
+    if not os.path.isfile(MARKER_FILE):
+        return False
+    try:
+        mtime = os.path.getmtime(MARKER_FILE)
+        age = time.time() - mtime
+        max_age = get_max_search_age()
+        return age < max_age
+    except Exception:
+        return False
+
+
+def main():
+    # 只在 agent-flow 项目中生效
+    if not os.path.isdir(".agent-flow") and not os.path.isdir(".dev-workflow"):
+        sys.exit(0)
+
+    # 只在 pre-flight 完成后执行
+    phase_file = ".agent-flow/state/current_phase.md"
+    if not os.path.isfile(phase_file) or os.path.getsize(phase_file) <= 10:
+        sys.exit(0)
+
+    # 读取 hook 输入
+    try:
+        input_data = json.loads(sys.stdin.read())
+    except Exception:
+        sys.exit(0)
+
+    tool_name = input_data.get("tool_name", "")
+    tool_input = input_data.get("tool_input", {})
+
+    needs_search_check = False
+    target_desc = ""
+
+    # Write/Edit: 代码文件需要搜索标记
+    if tool_name in ("Write", "Edit"):
+        file_path = tool_input.get("file_path", "")
+        if is_code_file(file_path):
+            needs_search_check = True
+            target_desc = f"文件: {file_path}"
+
+    # Bash: 非只读命令需要搜索标记
+    elif tool_name == "Bash":
+        command = tool_input.get("command", "")
+        if not is_readonly_bash(command):
+            needs_search_check = True
+            target_desc = f"命令: {command[:80]}"
+
+    if not needs_search_check:
+        sys.exit(0)
+
+    # 检查搜索标记
+    if has_recent_search():
+        sys.exit(0)  # 搜索已做，允许执行
+
+    # 无搜索标记 → 根据复杂度决定行为
+    complexity = get_complexity_level()
+
+    if complexity == "simple" and is_first_violation():
+        # Simple 任务首次违规：软提醒（不阻断）
+        record_violation()
+        print(
+            f"[AgentFlow REMINDER] 思维链提示 — 你没有先搜索知识库！\n"
+            f"目标: {target_desc}\n"
+            f"当前复杂度: Simple（快速路径）— 首次违规仅提醒，下次将阻断。\n"
+            f"建议: 执行 Grep 搜索 Skills/Wiki 后再继续。"
+        )
+        sys.exit(0)  # 不阻断
+    else:
+        # Medium/Complex 或 Simple 重复违规：硬阻断
+        record_violation()
+        print(f"{CHAIN_PROMPT}\n目标: {target_desc}")
+        sys.exit(2)
+
+
+if __name__ == "__main__":
+    main()
