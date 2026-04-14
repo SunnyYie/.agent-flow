@@ -97,10 +97,19 @@ def main():
         sys.exit(0)
 
     # 检查 pre-flight 是否已完成
-    phase_file = ".agent-flow/state/current_phase.md"
+    # 同时检查 .agent-flow/state/ 和 .dev-workflow/state/ 两个路径
+    phase_files = [
+        ".agent-flow/state/current_phase.md",
+        ".dev-workflow/state/current_phase.md",
+    ]
     complexity_file = ".agent-flow/state/.complexity-level"
 
-    if os.path.isfile(phase_file) and os.path.getsize(phase_file) > 10:
+    phase_found = any(
+        os.path.isfile(pf) and os.path.getsize(pf) > 10
+        for pf in phase_files
+    )
+
+    if phase_found:
         # current_phase.md 存在，但还需要检查 .complexity-level 是否存在
         if os.path.isfile(complexity_file):
             sys.exit(0)  # Pre-flight 完成且复杂度已评估，放行所有工具

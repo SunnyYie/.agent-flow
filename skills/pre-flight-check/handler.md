@@ -20,11 +20,18 @@ updated: 2026-04-14
 
 ### Step 1: 项目配置检查（不可跳过）
 
-按以下顺序检查，任何一个缺失都必须处理：
+**v3.2 新增：缓存优先机制**。先检查 `.agent-flow/state/.preflight-cache.md` 缓存，命中则跳过大量文件读取。
 
 ```text
+0. 缓存检查（新增，优先执行）
+   ├─ .agent-flow/state/.preflight-cache.md 存在且未过期（<24h）？
+   │   ├─ 是 → 读取缓存获取项目配置摘要、Skills索引、Wiki索引
+   │   │        跳过 Agent.md/purpose.md/INDEX.md/SOUL.md 全文读取
+   │   └─ 否 → 继续常规流程
+   └─ 缓存不存在 → 生成缓存（读取所有源文件后提取摘要写入）
+
 1. .dev-workflow/ 是否存在？
-   ├─ 存在 → 读取 .dev-workflow/Agent.md，按其 boot protocol 执行
+   ├─ 存在 → 读取 .dev-workflow/Agent.md（如缓存命中则只读摘要）
    └─ 不存在 → 继续检查
 
 2. .agent-flow/ 是否存在？
@@ -39,6 +46,11 @@ updated: 2026-04-14
    → 提示用户："本项目没有 .dev-workflow/，是否要初始化？(agent-flow init --dev-workflow)"
    → 用户拒绝 → 继续使用 .agent-flow/ 即 Layer 2
 ```
+
+**缓存失效条件**（任一满足则重新生成）：
+- 缓存文件不存在
+- 缓存文件修改时间 > 24 小时
+- 任一源文件（Agent.md/config.yaml/SOUL.md）修改时间 > 缓存修改时间
 
 **输出**：确认项目配置状态，记录到 Memory.md。
 
@@ -60,7 +72,7 @@ updated: 2026-04-14
 |------|--------|--------|---------|
 | 知识搜索 | 2步（全局Skills+Wiki） | 5步全做 | 5步+强制WebSearch |
 | GO/NO-GO | 无，用户确认即可 | Plan阶段门控 | 每阶段门控 |
-| 双验收 | 自审即可 | 关键子任务 | 所有子任务 |
+| 双验收 | 自审即可 | 关键子任务 | 改动量≥50行或3+文件时双验收 |
 | 文档化 | 分析→Memory.md | 分析+计划写入 | 分析+计划+每阶段记录 |
 | 多Agent | 不需要 | 验收时双Agent | 执行+验收都多Agent |
 | Hook行为 | 30min标记，首次软提醒 | 10min，硬阻断 | 5min，硬阻断 |

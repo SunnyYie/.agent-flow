@@ -31,6 +31,8 @@
   - [broad-keyword-search](pitfalls/workflow/broad-keyword-search.md) — 泛化关键词搜索导致范围扩大
   - [skipping-verifier](pitfalls/workflow/skipping-verifier.md) — 跳过验证者的后果
   - [promotion-duplication](pitfalls/workflow/promotion-duplication.md) — 晋升时创建重复内容而非更新已有文档
+  - [parallel-execution-not-enforced](pitfalls/workflow/parallel-execution-not-enforced.md) — 多Agent并行未强制执行
+  - [code-review-not-triggered](pitfalls/workflow/code-review-not-triggered.md) — 代码审查未自动触发
 - [security](pitfalls/security/) — 安全踩坑
   - [path-traversal-bypass](pitfalls/security/path-traversal-bypass.md) — 路径遍历绕过漏洞 + 安全模块对抗性测试
 - [environment](pitfalls/environment/) — 环境踩坑
@@ -40,6 +42,8 @@
 - [agent-flow](pitfalls/agent-flow/) — agent-flow CLI踩坑
   - [agent-flow-ship-rebase](pitfalls/agent-flow/agent-flow-ship-rebase.md) — ship自动rebase导致历史分叉
   - [add-feature-branch-conflict](pitfalls/agent-flow/add-feature-branch-conflict.md) — add-feature与已有分支冲突
+  - [hook-path-inconsistency](pitfalls/agent-flow/hook-path-inconsistency.md) — Hook路径不一致：current_phase.md双路径问题
+  - [git-stash-agent-flow-conflict](pitfalls/agent-flow/git-stash-agent-flow-conflict.md) — git stash与agent-flow状态文件冲突
 - [react-native](pitfalls/react-native/) — React Native踩坑
   - [jest-babel-compatibility](pitfalls/react-native/jest-babel-compatibility.md) — 旧版RN项目Jest/Babel不兼容
 - [llm-coding](pitfalls/llm-coding/) — LLM编程踩坑（源自Karpathy原则）

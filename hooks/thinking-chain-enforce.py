@@ -26,8 +26,8 @@ COMPLEXITY_FILE = ".agent-flow/state/.complexity-level"
 # 各复杂度的搜索标记有效期（秒）
 MAX_SEARCH_AGE_MAP = {
     "simple": 1800,   # 30 分钟
-    "medium": 600,    # 10 分钟
-    "complex": 300,   # 5 分钟
+    "medium": 900,    # 15 分钟
+    "complex": 600,   # 10 分钟
 }
 DEFAULT_MAX_SEARCH_AGE = 600  # 默认 Medium
 
@@ -177,8 +177,16 @@ def main():
         sys.exit(0)
 
     # 只在 pre-flight 完成后执行
-    phase_file = ".agent-flow/state/current_phase.md"
-    if not os.path.isfile(phase_file) or os.path.getsize(phase_file) <= 10:
+    # 同时检查 .agent-flow/state/ 和 .dev-workflow/state/ 两个路径
+    phase_files = [
+        ".agent-flow/state/current_phase.md",
+        ".dev-workflow/state/current_phase.md",
+    ]
+    phase_found = any(
+        os.path.isfile(pf) and os.path.getsize(pf) > 10
+        for pf in phase_files
+    )
+    if not phase_found:
         sys.exit(0)
 
     # 读取 hook 输入

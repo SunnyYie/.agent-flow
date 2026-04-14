@@ -22,6 +22,8 @@ import time
 
 MARKER_FILE = ".agent-flow/state/.search-done"
 TOOL_WIKI_READ_MARKER = ".agent-flow/state/.tool-wiki-read"
+SUBTASK_GUARD_MARKER = ".agent-flow/state/.subtask-guard-done"
+WIKI_SEARCH_MARKER = ".agent-flow/state/.wiki-search-done"
 
 # 默认需要监控的 critical tools
 DEFAULT_CRITICAL_TOOLS = ["lark-cli", "glab", "gh", "docker"]
@@ -35,6 +37,18 @@ VALID_SEARCH_KEYWORDS = [
     "dev-workflow/wiki",
     "Soul",
     "soul.md",
+]
+
+# Skills 搜索路径关键词 — 搜索 skills 时同时创建 subtask-guard 标记
+SKILLS_SEARCH_KEYWORDS = [
+    "agent-flow/skills",
+    "dev-workflow/skills",
+]
+
+# Wiki 搜索路径关键词 — 搜索 wiki 时同时创建 wiki-search 标记
+WIKI_SEARCH_KEYWORDS = [
+    "agent-flow/wiki",
+    "dev-workflow/wiki",
 ]
 
 # 这些工具总是视为知识搜索
@@ -149,6 +163,26 @@ def main():
         os.makedirs(os.path.dirname(MARKER_FILE), exist_ok=True)
         with open(MARKER_FILE, "w") as f:
             f.write(f"tool={tool_name}\ntime={time.time()}\n")
+
+        # 检查是否搜索了 skills/ 目录 → 自动创建 subtask-guard 标记
+        search_param = ""
+        if tool_name == "Grep":
+            search_param = tool_input.get("path", "")
+        elif tool_name == "Read":
+            search_param = tool_input.get("file_path", "")
+        elif tool_name == "Glob":
+            search_param = tool_input.get("path", "")
+
+        if any(kw in search_param for kw in SKILLS_SEARCH_KEYWORDS):
+            os.makedirs(os.path.dirname(SUBTASK_GUARD_MARKER), exist_ok=True)
+            with open(SUBTASK_GUARD_MARKER, "w") as f:
+                f.write(f"tool={tool_name}\ntime={time.time()}\npath={search_param}\n")
+
+        # 检查是否搜索了 wiki/ 目录 → 创建 wiki-search 标记
+        if any(kw in search_param for kw in WIKI_SEARCH_KEYWORDS):
+            os.makedirs(os.path.dirname(WIKI_SEARCH_MARKER), exist_ok=True)
+            with open(WIKI_SEARCH_MARKER, "w") as f:
+                f.write(f"tool={tool_name}\ntime={time.time()}\npath={search_param}\n")
 
     # 检查是否需要创建 .tool-wiki-read 标记
     critical_tools = load_critical_tools()

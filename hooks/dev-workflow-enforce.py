@@ -113,15 +113,20 @@ def has_implementation_plan() -> bool:
             return True
 
     # 检查 current_phase.md 中是否包含计划章节
-    phase_file = os.path.join(state_dir, "current_phase.md")
-    if os.path.isfile(phase_file):
-        try:
-            with open(phase_file, "r", encoding="utf-8") as f:
-                content = f.read()
-            if any(marker in content for marker in PLAN_MARKERS):
-                return True
-        except Exception:
-            pass
+    # 同时检查两个可能的路径
+    phase_paths = [
+        os.path.join(state_dir, "current_phase.md"),
+        ".dev-workflow/state/current_phase.md",
+    ]
+    for phase_file in phase_paths:
+        if os.path.isfile(phase_file):
+            try:
+                with open(phase_file, "r", encoding="utf-8") as f:
+                    content = f.read()
+                if any(marker in content for marker in PLAN_MARKERS):
+                    return True
+            except Exception:
+                pass
 
     return False
 
@@ -136,8 +141,16 @@ def main():
         sys.exit(0)
 
     # 只在 pre-flight 完成后执行（preflight-enforce.py 处理 pre-flight 前的阶段）
-    phase_file = ".agent-flow/state/current_phase.md"
-    if not os.path.isfile(phase_file) or os.path.getsize(phase_file) <= 10:
+    # 同时检查两个路径
+    phase_files = [
+        ".agent-flow/state/current_phase.md",
+        ".dev-workflow/state/current_phase.md",
+    ]
+    phase_found = any(
+        os.path.isfile(pf) and os.path.getsize(pf) > 10
+        for pf in phase_files
+    )
+    if not phase_found:
         sys.exit(0)
 
     # 读取 hook 输入
