@@ -25,7 +25,7 @@
 - [feishu](pitfalls/feishu/) — 飞书相关踩坑
   - [lark-cli-params](pitfalls/feishu/lark-cli-params.md) — lark-cli参数格式陷阱
 - [workflow](pitfalls/workflow/) — 工作流踩坑
-  - [execute-without-search](pitfalls/workflow/execute-without-search.md) — 不查就执行（含跳过搜索、先试错再查Skill）
+  - [execute-without-search](pitfalls/workflow/execute-without-search.md) — 不查就执行（4种表现：跳过搜索/已知问题重复/先试错再查/研究阶段搜过以为实施阶段不用搜）
   - [git-archaeology-oversearch](pitfalls/workflow/git-archaeology-oversearch.md) — Git考古过度搜索
   - [skip-implementation-plan](pitfalls/workflow/skip-implementation-plan.md) — 跳过实施计划文档直接开发
   - [broad-keyword-search](pitfalls/workflow/broad-keyword-search.md) — 泛化关键词搜索导致范围扩大
@@ -50,6 +50,7 @@
   - [overcomplication](pitfalls/llm-coding/overcomplication.md) — 代码过度复杂化陷阱
   - [drive-by-refactoring](pitfalls/llm-coding/drive-by-refactoring.md) — 顺带重构陷阱
   - [context-pollution](pitfalls/llm-coding/context-pollution.md) — 上下文污染：长会话质量退化
+  - [frontend-backend-type-alignment](pitfalls/llm-coding/frontend-backend-type-alignment.md) — 跨模块类型枚举不对齐（前端简化导致运行时异常）
 
 ## Tools（工具）
 

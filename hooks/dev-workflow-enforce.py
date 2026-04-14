@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
 """
 AgentFlow Dev Workflow Enforcer — PreToolUse hook
-强制执行4条开发铁律（即使 pre-flight 完成后也必须遵守）：
+强制执行5条开发铁律（即使 pre-flight 完成后也必须遵守）：
 1. 禁止在 main/master/develop 分支上修改代码文件
 2. 禁止没有实施计划文档就修改代码文件
 3. 特定操作前提醒搜索 Skill（MR、push 等）
 4. 遇到错误禁止自行推测（由 error-search-remind.py 处理）
+5. 连续 Edit/Write 超过 2 次且无间隔搜索时，强制执行 subtask-guard
 
 仅在有 .agent-flow/ 或 .dev-workflow/ 的项目中生效。
 仅在 pre-flight 完成后（current_phase.md 存在）才执行检查。
@@ -14,6 +15,7 @@ import json
 import os
 import subprocess
 import sys
+import time
 
 # ============================================================
 # 配置
@@ -55,6 +57,13 @@ ALLOWED_PATH_PREFIXES = (".agent-flow", ".dev-workflow", ".claude")
 # 深度澄清和设计决策标记文件（v3.0 新增）
 REQUIREMENT_CLARIFIED_MARKER = ".agent-flow/state/.requirement-clarified"
 DESIGN_CONFIRMED_MARKER = ".agent-flow/state/.design-confirmed"
+
+# 连续 Edit/Write 搜索守卫配置
+SUBTASK_GUARD_STATE_FILE = ".agent-flow/state/.subtask-guard-state.json"
+SUBTASK_GUARD_CONSECUTIVE_THRESHOLD = 2  # 连续 Edit/Write 次数阈值
+SUBTASK_GUARD_WINDOW_SECONDS = 300      # 搜索有效窗口（5分钟内有 Grep 算已搜索）
+SEARCH_TOOL_NAMES = {"Grep", "Glob"}    # 视为"已搜索"的工具
+CODE_MODIFY_TOOL_NAMES = {"Edit", "Write"}  # 视为"代码修改"的工具
 
 
 # ============================================================
@@ -245,6 +254,87 @@ def main():
                     f"⚠️ 禁止凭经验猜测操作方式！Wiki 已记录先试错再读 Skill 的 pitfall。"
                 )
                 sys.exit(0)
+
+    # ----------------------------------------------------------
+    # 检查 5: 连续 Edit/Write 搜索守卫（subtask-guard 强制执行）
+    # ----------------------------------------------------------
+
+    def load_guard_state():
+        """加载搜索守卫状态"""
+        if not os.path.isfile(SUBTASK_GUARD_STATE_FILE):
+            return {"consecutive_edits": 0, "last_search_ts": 0, "warned": False}
+        try:
+            with open(SUBTASK_GUARD_STATE_FILE, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except Exception:
+            return {"consecutive_edits": 0, "last_search_ts": 0, "warned": False}
+
+    def save_guard_state(state):
+        """保存搜索守卫状态"""
+        state_dir = os.path.dirname(SUBTASK_GUARD_STATE_FILE)
+        if not os.path.isdir(state_dir):
+            os.makedirs(state_dir, exist_ok=True)
+        try:
+            with open(SUBTASK_GUARD_STATE_FILE, "w", encoding="utf-8") as f:
+                json.dump(state, f)
+        except Exception:
+            pass
+
+    # 只对代码修改工具和搜索工具做追踪
+    if tool_name in CODE_MODIFY_TOOL_NAMES:
+        file_path = tool_input.get("file_path", "")
+        if is_code_file(file_path):
+            state = load_guard_state()
+            state["consecutive_edits"] = state.get("consecutive_edits", 0) + 1
+
+            # 检查是否在搜索窗口内有过搜索
+            now = time.time()
+            last_search = state.get("last_search_ts", 0)
+            has_recent_search = (now - last_search) < SUBTASK_GUARD_WINDOW_SECONDS
+
+            if has_recent_search:
+                # 有近期搜索，重置连续计数
+                state["consecutive_edits"] = 0
+                state["warned"] = False
+
+            elif state["consecutive_edits"] > SUBTASK_GUARD_CONSECUTIVE_THRESHOLD:
+                # 连续超过阈值次代码修改且无搜索
+                if not state.get("warned", False):
+                    # 首次：软提醒
+                    state["warned"] = True
+                    save_guard_state(state)
+                    print(
+                        f"[AgentFlow WARNING] 连续 {state['consecutive_edits']} 次代码修改但未执行搜索！\n"
+                        f"铁律：每个子任务执行前必须搜索 Skill/Wiki/Soul。\n"
+                        f"请执行 subtask-guard 技能的 4 步搜索后再继续。\n"
+                        f"下次将硬阻断。目标文件: {file_path}"
+                    )
+                    sys.exit(0)
+                else:
+                    # 已警告过：硬阻断
+                    state["warned"] = False  # 重置，阻断后下次再犯重新计数
+                    save_guard_state(state)
+                    print(
+                        f"[AgentFlow BLOCKED] 连续 {state['consecutive_edits']} 次代码修改且未执行搜索！\n"
+                        f"这是第 2 次违反，强制阻断。\n\n"
+                        f"请立即执行 subtask-guard 技能：\n"
+                        f"  1. Grep '{{子任务关键词}}' .agent-flow/skills/\n"
+                        f"  2. Grep '{{子任务关键词}}' ~/.agent-flow/skills/\n"
+                        f"  3. Grep '{{子任务关键词}}' .agent-flow/memory/main/Soul.md\n"
+                        f"  4. Grep '{{子任务关键词}}' ~/.agent-flow/wiki/ + .agent-flow/wiki/\n\n"
+                        f"搜索完成后可继续编码。参考: ~/.agent-flow/skills/subtask-guard/handler.md"
+                    )
+                    sys.exit(2)
+
+            save_guard_state(state)
+
+    elif tool_name in SEARCH_TOOL_NAMES:
+        # 搜索工具调用，更新搜索时间戳并重置连续计数
+        state = load_guard_state()
+        state["last_search_ts"] = time.time()
+        state["consecutive_edits"] = 0  # 搜索后重置连续计数
+        state["warned"] = False
+        save_guard_state(state)
 
     sys.exit(0)
 

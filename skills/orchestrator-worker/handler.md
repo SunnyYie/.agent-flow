@@ -1,6 +1,8 @@
 # Skill: 编排者-工作者模式
 
 > 来源: [claude-cookbooks/orchestrator_workers.ipynb](https://github.com/anthropics/claude-cookbooks/blob/main/patterns/agents/orchestrator_workers.ipynb)
+>
+> **v2.0 更新**: 现已集成主 Agent + 子 Agent 上下文隔离架构。Medium/Complex 任务的 EXECUTE 阶段，工作者通过 Claude Code Agent tool 派发为独立子 Agent，避免上下文溢出。
 
 ## Trigger — 何时使用
 
@@ -11,6 +13,7 @@
 
 ## Required Reading — 前置阅读
 
+- `~/.agent-flow/skills/main-agent-dispatch/handler.md` — 主 Agent 派发协议（上下文隔离核心）
 - `~/.agent-flow/skills/prompt-caching-optimization/handler.md` — 提示词缓存优化（编排者可预热缓存）
 - `.agent-flow/wiki/patterns/orchestrator-workers.md` — 模式详解
 
@@ -83,6 +86,34 @@ Your content here.
 ```
 
 ### Step 4: 执行与聚合
+
+**方式一：Claude Code Agent tool 派发（推荐，上下文隔离）**
+
+当任务复杂度 ≥ Medium 时，使用 Claude Code Agent tool 派发独立子 Agent：
+
+```python
+# 主 Agent 上下文中只保留流程状态
+# 1. 更新 flow-context.yaml
+# 2. 创建任务包
+# 3. 派发子 Agent
+
+# 并行派发多个无依赖的工作者
+Agent({
+    description: "executor-1: {task_type_1}",
+    prompt: "你是执行者 Agent。\n任务: {task_description}\n验收标准: {criteria}\n任务包: .agent-flow/artifacts/task-{id}-packet.md\n摘要: .agent-flow/artifacts/task-{id}-summary.md",
+    subagent_type: "general-purpose"
+})
+
+Agent({
+    description: "executor-2: {task_type_2}",
+    prompt: "你是执行者 Agent。\n任务: {task_description}\n验收标准: {criteria}\n任务包: .agent-flow/artifacts/task-{id}-packet.md\n摘要: .agent-flow/artifacts/task-{id}-summary.md",
+    subagent_type: "general-purpose"
+})
+```
+
+详见 `~/.agent-flow/skills/main-agent-dispatch/handler.md`。
+
+**方式二：Python FlexibleOrchestrator（简单任务，无需上下文隔离）**
 
 ```python
 from agent_flow.core.orchestrator import FlexibleOrchestrator, ORCHESTRATOR_PROMPT, WORKER_PROMPT

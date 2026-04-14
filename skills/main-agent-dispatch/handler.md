@@ -1,0 +1,198 @@
+---
+name: main-agent-dispatch
+version: 1.0.0
+trigger: 主Agent派发, 子Agent, Agent dispatch, context overflow, 上下文溢出
+confidence: 1.0
+abstraction: universal
+created: 2026-04-14
+---
+
+# Skill: 主 Agent 派发协议
+
+> **解决上下文溢出**：主 Agent 只保留流程状态，任务执行由独立子 Agent 完成，结果压缩后回传。
+
+## Trigger
+
+- 任务复杂度 ≥ Medium（4-10分）时，EXECUTE 阶段自动触发
+- 主 Agent 上下文预算 > 70% 时强制触发
+- 需要并行执行多个独立子任务时
+
+## 核心原则
+
+**主 Agent = 状态机 + 指针表**
+
+主 Agent 上下文只包含：
+1. 工作流阶段和任务清单（每任务 1 行）
+2. 已完成任务的 L1 摘要（OUTCOME + 文件列表）
+3. 活跃子 Agent 状态（名称、角色、任务 ID）
+
+**子 Agent = 独立执行者**
+
+子 Agent 拥有独立上下文窗口，负责：
+1. 读取任务包获取完整上下文
+2. 执行任务并增量写制品
+3. 按模板写压缩摘要
+
+## Procedure
+
+### Step 1: 检查是否需要派发
+
+```
+条件检查:
+├── 复杂度 ≥8 (Complex) → 始终派发
+├── 复杂度 5-7 (Medium) → 派发验证子Agent，执行可自行
+├── 复杂度 ≤4 (Simple) → 不派发，直接处理
+├── 上下文预算 >70% → 强制派发任何剩余工作
+├── 子任务涉及 ≥3 文件修改 → 派发 executor
+└── 子任务需要 WebSearch → 派发 researcher
+```
+
+### Step 2: 更新 flow-context.yaml
+
+在派发前，主 Agent 必须更新 `.agent-flow/state/flow-context.yaml`：
+
+```yaml
+workflow:
+  id: "{唯一标识}"
+  phase: "{当前阶段}"
+  context_budget:
+    used: {估算值}
+    max: 200000
+    status: "{healthy|warning|critical}"
+
+tasks:
+  - id: {任务ID}
+    title: "{任务标题}"
+    status: "{pending|in_progress|completed|failed}"
+    agent: "{子Agent名称，in_progress时必填}"
+    summary: "{L1摘要，completed时必填}"
+    artifact: "{摘要文件路径，completed时必填}"
+
+agents:
+  - name: "{子Agent名称}"
+    role: "{executor|verifier|researcher}"
+    status: "{running|completed|failed}"
+    task: {任务ID}
+```
+
+### Step 3: 生成任务包
+
+为每个子 Agent 创建任务包文件 `.agent-flow/artifacts/task-{id}-packet.md`：
+
+```markdown
+# Task {id}: {title}
+
+## 任务描述
+{具体任务描述}
+
+## 验收标准
+- [ ] {标准1}
+- [ ] {标准2}
+
+## 依赖制品
+- Task {dep_id} 输出: .agent-flow/artifacts/task-{dep_id}-summary.md
+
+## 技能路径
+- {项目技能路径}
+- {全局技能路径}
+
+## 记忆路径
+- 读: {wiki/知识路径}
+- 写: .agent-flow/memory/{agent_name}/Memory.md
+- 写: .agent-flow/memory/{agent_name}/Soul.md
+
+## 上下文预算
+目标: {token数}
+```
+
+### Step 4: 派发子 Agent
+
+使用 Claude Code Agent tool 派发：
+
+**Executor 子 Agent**:
+
+```
+Agent({
+    description: "executor-{n}: {任务标题}",
+    prompt: "你是执行者 Agent。\n任务: {任务描述}\n验收标准: {验收标准}\n任务包: .agent-flow/artifacts/task-{id}-packet.md\n完成后写摘要到: .agent-flow/artifacts/task-{id}-summary.md\n完整结果写到: .agent-flow/artifacts/task-{id}-result.md\n修改文件列表写到: .agent-flow/artifacts/task-{id}-files.txt",
+    subagent_type: "general-purpose"
+})
+```
+
+**Verifier 子 Agent**:
+
+```
+Agent({
+    description: "verifier-{n}: 验证任务{id}",
+    prompt: "你是验证者 Agent。\n验证任务: {任务描述}\n验收标准: {验收标准}\n被验证的摘要: .agent-flow/artifacts/task-{id}-summary.md\n被验证的文件列表: .agent-flow/artifacts/task-{id}-files.txt\n任务包: .agent-flow/artifacts/task-{id}-packet.md\n写验证结果到: .agent-flow/artifacts/task-{id}-verification.md",
+    subagent_type: "general-purpose"
+})
+```
+
+**Researcher 子 Agent**:
+
+```
+Agent({
+    description: "researcher-{n}: 调研{主题}",
+    prompt: "你是研究者 Agent。\n调研主题: {主题}\n任务包: .agent-flow/artifacts/task-{id}-packet.md\n写调研结果到: .agent-flow/artifacts/task-{id}-result.md\n写摘要到: .agent-flow/artifacts/task-{id}-summary.md",
+    subagent_type: "general-purpose"
+})
+```
+
+### Step 5: 收集子 Agent 结果
+
+子 Agent 完成后，主 Agent 只读取：
+
+1. **L1（始终读取）**: flow-context.yaml 中的任务状态
+2. **L2（按需读取）**: `.agent-flow/artifacts/task-{id}-summary.md`
+3. **L3（深度需求时）**: 定向读取 `.agent-flow/artifacts/task-{id}-result.md` 的特定段落
+
+**禁止**: 主 Agent 不能将 L3 完整内容加载到自身上下文。
+
+### Step 6: 验证摘要准确性
+
+对于 Medium/Complex 任务的摘要，派发 Verifier 子 Agent 抽检：
+
+- 检查摘要是否准确反映实际变更
+- 检查文件列表是否完整
+- 检查测试结果是否与实际一致
+- 写验证结果到 `.agent-flow/artifacts/task-{id}-verification.md`
+
+### Step 7: 更新流程状态
+
+收集并验证完成后，更新 flow-context.yaml：
+
+1. 将任务状态改为 completed/failed
+2. 写入 L1 摘要（1 行）
+3. 更新 agent 状态为 completed
+4. 更新上下文预算
+
+## 并行派发规则
+
+- 最多 3 个并行子 Agent
+- 无依赖的任务在一条消息中并行派发（多个 Agent tool call）
+- 有依赖的任务串行派发，前一个的制品路径写入后一个的任务包
+- 递归深度限制：子 Agent 可再派发 1 层子子 Agent，但不能再深
+
+## 递归派发（1层限制）
+
+当 executor 子 Agent 发现自身上下文即将溢出时：
+
+1. 子 Agent 可再派发 1 层子子 Agent
+2. 子子 Agent 的任务包必须包含 `recursion_depth: 1` 标记
+3. `recursion_depth: 1` 的 Agent 不允许继续派发
+4. 子子 Agent 的摘要路径格式: `.agent-flow/artifacts/task-{id}-sub-{n}-summary.md`
+
+## Rules
+
+1. **主 Agent 不执行具体任务**: EXECUTE 阶段的代码编写、测试执行必须由子 Agent 完成
+2. **摘要模板必须遵守**: 子 Agent 必须按摘要模板写 summary，不得自由发挥
+3. **增量写制品**: 子 Agent 在执行过程中应增量写中间结果，而非仅完成时一次性写
+4. **L3 完整结果禁止全量加载**: 主 Agent 上下文中不能包含任何 task-result.md 的完整内容
+5. **flow-context.yaml 必须同步**: 每次状态转换前必须先更新 YAML
+6. **并行上限 3**: 同时运行的子 Agent 不超过 3 个
+7. **递归深度 ≤1**: 子子 Agent 不能再派发
+
+## 变更历史
+
+- v1.0.0 (2026-04-14): 初始版本，主 Agent + 子 Agent 派发协议
