@@ -1,10 +1,11 @@
 ---
 name: main-agent-dispatch
-version: 1.0.0
+version: 2.0.0
 trigger: 主Agent派发, 子Agent, Agent dispatch, context overflow, 上下文溢出
 confidence: 1.0
 abstraction: universal
 created: 2026-04-14
+updated: 2026-04-15
 ---
 
 # Skill: 主 Agent 派发协议
@@ -139,24 +140,65 @@ Agent({
 })
 ```
 
-### Step 5: 收集子 Agent 结果
+### Step 5: 收集子 Agent 结果（三级压缩 + 渐进式加载）
 
-子 Agent 完成后，主 Agent 只读取：
+子 Agent 完成后，主 Agent 按需加载：
 
-1. **L1（始终读取）**: flow-context.yaml 中的任务状态
-2. **L2（按需读取）**: `.agent-flow/artifacts/task-{id}-summary.md`
-3. **L3（深度需求时）**: 定向读取 `.agent-flow/artifacts/task-{id}-result.md` 的特定段落
+1. **L1（始终读取）**: flow-context.yaml 中的任务状态和 1 行摘要
+2. **L2（按需读取）**: `.agent-flow/artifacts/task-{id}-summary.md` — 结构化摘要（≤20行）
+3. **L3（深度需求时）**: 不得直接读取，通过"深度上下文分析师"子 Agent 间接访问
+
+**渐进式上下文加载协议**:
+
+```
+主 Agent 需要子 Agent 工作细节时：
+├── 先读 L2 摘要（~500 tokens）
+├── 摘要不够？
+│   └── 定向读取 L3 结果的特定段落（用 offset/limit 参数）
+└── 还不够？
+    └── 派发"深度上下文分析师"子 Agent：
+        Agent({
+            description: "analyst: 分析任务{id}结果",
+            prompt: "读取 .agent-flow/artifacts/task-{id}-result.md，回答以下问题：\n{具体问题}\n只返回答案，不要返回完整结果内容。",
+            subagent_type: "general-purpose"
+        })
+```
 
 **禁止**: 主 Agent 不能将 L3 完整内容加载到自身上下文。
 
-### Step 6: 验证摘要准确性
+**预算感知加载**:
+- healthy 状态: 可自由读取 L2 摘要
+- warning 状态: 限制 L2 读取数量（同时最多 3 个摘要）
+- critical 状态: 禁止读取任何 L2/L3，只能看 flow-context.yaml 中的 L1
 
-对于 Medium/Complex 任务的摘要，派发 Verifier 子 Agent 抽检：
+### Step 6: 验证摘要准确性（Verifier 抽检）
 
-- 检查摘要是否准确反映实际变更
-- 检查文件列表是否完整
-- 检查测试结果是否与实际一致
-- 写验证结果到 `.agent-flow/artifacts/task-{id}-verification.md`
+对于 Medium/Complex 任务的摘要，按 summary-verifier Skill 派发 Verifier 子 Agent 抽检：
+
+**抽检策略**:
+| 复杂度 | 抽检比例 | 触发条件 |
+|--------|---------|---------|
+| Simple | 0% | 不抽检 |
+| Medium | 50% | 变更文件 ≥3 个时必须抽检 |
+| Complex | 100% | 始终抽检 |
+
+**Verifier 派发**:
+```
+Agent({
+    description: "verifier-{n}: 抽检任务{id}摘要",
+    prompt: "你是摘要验证者 Agent。\n验证目标: Task {id} 摘要准确性\n验证材料:\n1. 摘要: .agent-flow/artifacts/task-{id}-summary.md\n2. 文件列表: .agent-flow/artifacts/task-{id}-files.txt\n3. 任务包: .agent-flow/artifacts/task-{id}-packet.md\n\n检查项: 文件一致性|变更准确性|测试结果|遗漏检测|格式合规\n输出: .agent-flow/artifacts/task-{id}-verification.md\nVerdict: PASS|FAIL|PARTIAL",
+    subagent_type: "general-purpose"
+})
+```
+
+**验证结果处理**:
+| Verdict | 动作 |
+|---------|------|
+| PASS | 确认完成，更新 flow-context.yaml |
+| PARTIAL | 补充摘要缺失项 |
+| FAIL | 重新派发 executor 修复，或由主 Agent 直接修复摘要 |
+
+详见 `~/.agent-flow/skills/summary-verifier/handler.md`
 
 ### Step 7: 更新流程状态
 
