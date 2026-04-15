@@ -59,6 +59,7 @@
 - [claude-code-settings](tools/claude-code-settings.md) — Claude Code 关键设置与环境变量精选参考
 - [advanced-tool-use](tools/advanced-tool-use.md) — 高级工具用法（PTC/Dynamic Filtering/Tool Search）
 - [monorepo-claudemd](tools/monorepo-claudemd.md) — Monorepo CLAUDE.md 加载机制（祖先/后代/兄弟）
+- [mai-jira-cli](tools/mai-jira-cli.md) — 私有部署 Jira Server CLI（飞书SSO认证/配置/API调用注意事项）
 
 ## Concepts（核心概念）
 
