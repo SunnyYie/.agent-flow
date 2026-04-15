@@ -152,6 +152,7 @@ result = orchestrator.process(
 3. **成本考量**：编排者-工作者需要 N+1 次 LLM 调用（1 编排 + N 工作者），仅在任务确实需要多视角时使用
 4. **延迟考量**：工作者并行执行可降低延迟，串行执行会增加总时间
 5. **XML 解析健壮性**：LLM 可能不严格遵循 XML 格式，解析代码需容错
+6. **工作者失败兜底**：子Agent可能因429速率限制失败，主Agent必须用Glob检查产出文件是否存在，不存在则自行完成。详见 `wiki/pitfalls/workflow/multi-agent-rate-limit-recovery.md`
 
 ## 相关
 

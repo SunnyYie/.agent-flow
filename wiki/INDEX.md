@@ -10,6 +10,8 @@
   - [rpi-workflow](patterns/workflow/rpi-workflow.md) — RPI 工作流：Research→Plan→Implement + GO/NO-GO 门控
   - [cross-model-workflow](patterns/workflow/cross-model-workflow.md) — 跨模型交叉验证（Claude 规划 + Codex QA）
   - [agent-teams](patterns/workflow/agent-teams.md) — 多会话并行协作（tmux + worktree + 共享任务列表）
+  - [test-matrix-5-dimension-check](patterns/workflow/test-matrix-5-dimension-check.md) — 测试矩阵5维检查（覆盖度/可追溯/自动化映射/边界场景/双验收）
+  - [e2e-script-three-part-structure](patterns/workflow/e2e-script-three-part-structure.md) — 联调脚本三段式结构（输入模板+预期输出+验证要点）
 - [architecture](patterns/architecture/) — 架构模式
   - [adr-decision-record](patterns/architecture/adr-decision-record.md) — 架构决策记录(ADR)
   - [fatal-transient-errors](patterns/architecture/fatal-transient-errors.md) — FATAL/TRANSIENT错误分类与容错
@@ -33,6 +35,7 @@
   - [promotion-duplication](pitfalls/workflow/promotion-duplication.md) — 晋升时创建重复内容而非更新已有文档
   - [parallel-execution-not-enforced](pitfalls/workflow/parallel-execution-not-enforced.md) — 多Agent并行未强制执行
   - [code-review-not-triggered](pitfalls/workflow/code-review-not-triggered.md) — 代码审查未自动触发
+  - [multi-agent-rate-limit-recovery](pitfalls/workflow/multi-agent-rate-limit-recovery.md) — 多Agent并行429失败：主Agent必须Glob检查+兜底
 - [security](pitfalls/security/) — 安全踩坑
   - [path-traversal-bypass](pitfalls/security/path-traversal-bypass.md) — 路径遍历绕过漏洞 + 安全模块对抗性测试
 - [environment](pitfalls/environment/) — 环境踩坑

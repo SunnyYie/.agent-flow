@@ -202,3 +202,17 @@ agent-workflow/tests/
 - 异步测试用 `@pytest.mark.asyncio`（已配置 auto mode）
 - 集成/E2E 测试放在对应子目录，标记 `@pytest.mark.integration`
 - 不为测试而测试——每个测试必须验证有意义的行为
+
+## Quality Gate — 测试矩阵5维检查
+
+> 建立测试验收矩阵时必须执行5维检查，详见 `wiki/patterns/workflow/test-matrix-5-dimension-check.md`
+
+| 维度 | 核心要求 |
+| ---- | -------- |
+| 覆盖度 | 每个原始问题必须有直接验收项+量化通过标准 |
+| 可追溯 | 验收项→原问题→冻结约束可双向反查 |
+| 自动化映射 | automated_test验收项映射到 `文件名::用例名` |
+| 边界场景 | 每模块至少3个边界用例（冲突/过期/重复） |
+| 双验收 | 复杂度≥Medium需双Agent独立审查 |
+
+联调脚本结构规范见 `wiki/patterns/workflow/e2e-script-three-part-structure.md`
