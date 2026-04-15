@@ -60,10 +60,23 @@ DESIGN_CONFIRMED_MARKER = ".agent-flow/state/.design-confirmed"
 
 # 连续 Edit/Write 搜索守卫配置
 SUBTASK_GUARD_STATE_FILE = ".agent-flow/state/.subtask-guard-state.json"
-SUBTASK_GUARD_CONSECUTIVE_THRESHOLD = 2  # 连续 Edit/Write 次数阈值
-SUBTASK_GUARD_WINDOW_SECONDS = 300      # 搜索有效窗口（5分钟内有 Grep 算已搜索）
-SEARCH_TOOL_NAMES = {"Grep", "Glob"}    # 视为"已搜索"的工具
+SUBTASK_GUARD_CONSECUTIVE_THRESHOLD = 4  # 连续 Edit/Write 次数阈值（v2: 2→4，避免正常编码误触）
+SUBTASK_GUARD_WINDOW_SECONDS = 600      # 搜索有效窗口（v2: 5→10分钟，给复杂编辑更多空间）
+STATE_STALE_SECONDS = 1800              # 状态过期时间（v2新增：30分钟无活动自动重置）
+SEARCH_TOOL_NAMES = {"Grep", "Glob", "WebSearch", "Agent", "Skill"}  # v2: 扩展搜索工具范围
 CODE_MODIFY_TOOL_NAMES = {"Edit", "Write"}  # 视为"代码修改"的工具
+
+# 搜索标记文件 — search-tracker.py 创建，可作为搜索证据
+SEARCH_MARKER_FILE = ".agent-flow/state/.search-done"
+SUBTASK_GUARD_MARKER = ".agent-flow/state/.subtask-guard-done"
+
+# 标记有效期（与 subtask-guard-enforce.py 对齐，v2: 按复杂度分级）
+MARKER_MAX_AGE_MAP = {
+    "simple": 3600,   # 60 分钟
+    "medium": 1800,   # 30 分钟
+    "complex": 1200,  # 20 分钟
+}
+DEFAULT_MARKER_MAX_AGE = 1800
 
 
 # ============================================================
@@ -257,17 +270,33 @@ def main():
 
     # ----------------------------------------------------------
     # 检查 5: 连续 Edit/Write 搜索守卫（subtask-guard 强制执行）
+    # v2: 自动过期 + 标记证据 + 扩展搜索工具 + 宽松阈值
     # ----------------------------------------------------------
 
     def load_guard_state():
-        """加载搜索守卫状态"""
+        """加载搜索守卫状态，自动过期陈旧状态"""
+        default_state = {
+            "consecutive_edits": 0,
+            "last_search_ts": 0,
+            "last_edit_ts": 0,
+            "warned": False,
+        }
         if not os.path.isfile(SUBTASK_GUARD_STATE_FILE):
-            return {"consecutive_edits": 0, "last_search_ts": 0, "warned": False}
+            return default_state
         try:
             with open(SUBTASK_GUARD_STATE_FILE, "r", encoding="utf-8") as f:
-                return json.load(f)
+                state = json.load(f)
+            # v2 自动过期：如果最后编辑时间超过 STATE_STALE_SECONDS，重置状态
+            last_edit = state.get("last_edit_ts", 0)
+            if last_edit > 0 and (time.time() - last_edit) > STATE_STALE_SECONDS:
+                return default_state
+            # v2 安全重置：如果 warned=true 但 last_edit 已过期，清除 warned
+            if state.get("warned", False):
+                if last_edit == 0 or (time.time() - last_edit) > SUBTASK_GUARD_WINDOW_SECONDS:
+                    state["warned"] = False
+            return state
         except Exception:
-            return {"consecutive_edits": 0, "last_search_ts": 0, "warned": False}
+            return default_state
 
     def save_guard_state(state):
         """保存搜索守卫状态"""
@@ -280,61 +309,117 @@ def main():
         except Exception:
             pass
 
+    def has_marker_evidence():
+        """v2新增：检查 search-tracker.py 创建的标记文件作为搜索证据（按复杂度分级有效期）"""
+        # 读取复杂度级别
+        complexity = "medium"
+        complexity_file = ".agent-flow/state/.complexity-level"
+        if os.path.isfile(complexity_file):
+            try:
+                with open(complexity_file, "r", encoding="utf-8") as f:
+                    for line in f:
+                        line = line.strip()
+                        if line.startswith("level="):
+                            complexity = line.split("=", 1)[1].strip().lower()
+                            break
+            except Exception:
+                pass
+        max_age = MARKER_MAX_AGE_MAP.get(complexity, DEFAULT_MARKER_MAX_AGE)
+
+        now = time.time()
+        for marker_file in [SEARCH_MARKER_FILE, SUBTASK_GUARD_MARKER]:
+            if os.path.isfile(marker_file):
+                try:
+                    mtime = os.path.getmtime(marker_file)
+                    if (now - mtime) < max_age:
+                        return True
+                except Exception:
+                    pass
+        return False
+
+    def is_knowledge_search(tool_name, tool_input):
+        """v2新增：判断搜索工具是否搜索了知识库路径（与 search-tracker.py 逻辑对齐）"""
+        if tool_name in {"WebSearch", "Agent", "Skill"}:
+            return True
+        # Grep/Glob/Read 搜索知识库路径也算
+        search_param = ""
+        if tool_name == "Grep":
+            search_param = tool_input.get("path", "")
+        elif tool_name == "Glob":
+            search_param = tool_input.get("path", "")
+        elif tool_name == "Read":
+            search_param = tool_input.get("file_path", "")
+        valid_keywords = [
+            "agent-flow/skills", "agent-flow/wiki", "agent-flow/memory",
+            "dev-workflow/skills", "dev-workflow/wiki", "Soul", "soul.md",
+        ]
+        return any(kw in search_param for kw in valid_keywords)
+
     # 只对代码修改工具和搜索工具做追踪
     if tool_name in CODE_MODIFY_TOOL_NAMES:
         file_path = tool_input.get("file_path", "")
         if is_code_file(file_path):
             state = load_guard_state()
-            state["consecutive_edits"] = state.get("consecutive_edits", 0) + 1
-
-            # 检查是否在搜索窗口内有过搜索
             now = time.time()
+
+            # v2: 检查搜索证据（标记文件 或 窗口内搜索时间戳）
+            marker_evidence = has_marker_evidence()
             last_search = state.get("last_search_ts", 0)
-            has_recent_search = (now - last_search) < SUBTASK_GUARD_WINDOW_SECONDS
+            has_recent_search = marker_evidence or (now - last_search) < SUBTASK_GUARD_WINDOW_SECONDS
 
             if has_recent_search:
-                # 有近期搜索，重置连续计数
+                # 有近期搜索证据，重置并允许编辑
                 state["consecutive_edits"] = 0
+                state["last_search_ts"] = now if marker_evidence else last_search
+                state["last_edit_ts"] = now
                 state["warned"] = False
+                save_guard_state(state)
+            else:
+                # 无搜索证据，递增计数
+                state["consecutive_edits"] = state.get("consecutive_edits", 0) + 1
+                state["last_edit_ts"] = now
 
-            elif state["consecutive_edits"] > SUBTASK_GUARD_CONSECUTIVE_THRESHOLD:
-                # 连续超过阈值次代码修改且无搜索
-                if not state.get("warned", False):
-                    # 首次：软提醒
-                    state["warned"] = True
-                    save_guard_state(state)
-                    print(
-                        f"[AgentFlow WARNING] 连续 {state['consecutive_edits']} 次代码修改但未执行搜索！\n"
-                        f"铁律：每个子任务执行前必须搜索 Skill/Wiki/Soul。\n"
-                        f"请执行 subtask-guard 技能的 4 步搜索后再继续。\n"
-                        f"下次将硬阻断。目标文件: {file_path}"
-                    )
-                    sys.exit(0)
-                else:
-                    # 已警告过：硬阻断
-                    state["warned"] = False  # 重置，阻断后下次再犯重新计数
-                    save_guard_state(state)
-                    print(
-                        f"[AgentFlow BLOCKED] 连续 {state['consecutive_edits']} 次代码修改且未执行搜索！\n"
-                        f"这是第 2 次违反，强制阻断。\n\n"
-                        f"请立即执行 subtask-guard 技能：\n"
-                        f"  1. Grep '{{子任务关键词}}' .agent-flow/skills/\n"
-                        f"  2. Grep '{{子任务关键词}}' ~/.agent-flow/skills/\n"
-                        f"  3. Grep '{{子任务关键词}}' .agent-flow/memory/main/Soul.md\n"
-                        f"  4. Grep '{{子任务关键词}}' ~/.agent-flow/wiki/ + .agent-flow/wiki/\n\n"
-                        f"搜索完成后可继续编码。参考: ~/.agent-flow/skills/subtask-guard/handler.md"
-                    )
-                    sys.exit(2)
+                if state["consecutive_edits"] > SUBTASK_GUARD_CONSECUTIVE_THRESHOLD:
+                    # 连续超过阈值次代码修改且无搜索
+                    if not state.get("warned", False):
+                        # 首次：软提醒
+                        state["warned"] = True
+                        save_guard_state(state)
+                        print(
+                            f"[AgentFlow WARNING] 连续 {state['consecutive_edits']} 次代码修改但未执行搜索！\n"
+                            f"铁律：每个子任务执行前必须搜索 Skill/Wiki/Soul。\n"
+                            f"请执行 subtask-guard 技能的 4 步搜索后再继续。\n"
+                            f"下次将硬阻断。目标文件: {file_path}"
+                        )
+                        sys.exit(0)
+                    else:
+                        # 已警告过：硬阻断
+                        count = state["consecutive_edits"]  # S1 fix: 保存计数后再重置
+                        state["warned"] = False
+                        state["consecutive_edits"] = 0
+                        save_guard_state(state)
+                        print(
+                            f"[AgentFlow BLOCKED] 连续 {count} 次代码修改且未执行搜索！\n"
+                            f"这是第 2 次违反，强制阻断。\n\n"
+                            f"请立即执行 subtask-guard 技能：\n"
+                            f"  1. Grep '{{子任务关键词}}' .agent-flow/skills/\n"
+                            f"  2. Grep '{{子任务关键词}}' ~/.agent-flow/skills/\n"
+                            f"  3. Grep '{{子任务关键词}}' .agent-flow/memory/main/Soul.md\n"
+                            f"  4. Grep '{{子任务关键词}}' ~/.agent-flow/wiki/ + .agent-flow/wiki/\n\n"
+                            f"搜索完成后可继续编码。参考: ~/.agent-flow/skills/subtask-guard/handler.md"
+                        )
+                        sys.exit(2)
 
-            save_guard_state(state)
+                save_guard_state(state)
 
     elif tool_name in SEARCH_TOOL_NAMES:
-        # 搜索工具调用，更新搜索时间戳并重置连续计数
-        state = load_guard_state()
-        state["last_search_ts"] = time.time()
-        state["consecutive_edits"] = 0  # 搜索后重置连续计数
-        state["warned"] = False
-        save_guard_state(state)
+        # v2: 知识库搜索工具调用，更新搜索时间戳并重置连续计数
+        if is_knowledge_search(tool_name, tool_input):
+            state = load_guard_state()
+            state["last_search_ts"] = time.time()
+            state["consecutive_edits"] = 0  # 搜索后重置连续计数
+            state["warned"] = False
+            save_guard_state(state)
 
     sys.exit(0)
 

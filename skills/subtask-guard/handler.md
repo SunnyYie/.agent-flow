@@ -100,3 +100,39 @@ created: 2026-04-13
 - **调度优先级**：Skill 内联 → Agent 独立 → Command 编排，优先选轻量方式
 - **隔离大输出**：预计产生大量中间输出的子任务必须用 Agent，避免污染主对话
 - **记录必写**：每次执行都必须写入 Memory.md，格式固定
+
+## Troubleshooting
+
+### 状态中毒（跨会话误阻断）
+
+如果遇到"连续 N 次代码修改且未执行搜索"的误阻断，通常是 `.subtask-guard-state.json` 跨会话残留导致的。
+
+**自动恢复**（v2 已内置）：
+
+- `.subtask-guard-state.json`：30 分钟无编辑活动自动过期重置（`dev-workflow-enforce.py` 管理）
+- `.subtask-guard-done` / `.search-done` 标记：按复杂度自动过期（Simple 60min / Medium 30min / Complex 20min，`subtask-guard-enforce.py` 管理）
+
+**手动恢复**：执行一次知识库搜索即可重置：
+
+```
+Grep "subtask" .agent-flow/skills/
+```
+
+或直接重置状态文件：
+
+```python
+import json
+with open(".agent-flow/state/.subtask-guard-state.json", "w") as f:
+    json.dump({"consecutive_edits": 0, "last_search_ts": 0, "last_edit_ts": 0, "warned": False}, f)
+```
+
+### 标记过期（subtask-guard-done 失效）
+
+搜索标记有效期：Simple 60min / Medium 30min / Complex 20min。
+
+如果标记过期，执行一次搜索即可刷新：
+
+```
+Grep "{关键词}" .agent-flow/skills/
+```
+```

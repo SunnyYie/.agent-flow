@@ -20,15 +20,16 @@ import sys
 import time
 
 MARKER_FILE = ".agent-flow/state/.subtask-guard-done"
+SEARCH_MARKER_FILE = ".agent-flow/state/.search-done"  # v2: search-tracker.py 标记也作为有效证据
 COMPLEXITY_FILE = ".agent-flow/state/.complexity-level"
 
-# 各复杂度的标记有效期（秒）
+# 各复杂度的标记有效期（秒）— v2: 适度放宽
 MAX_AGE_MAP = {
-    "simple": 1800,   # 30 分钟
-    "medium": 900,    # 15 分钟
-    "complex": 600,   # 10 分钟
+    "simple": 3600,   # 60 分钟（v2: 30→60，简单任务不需要频繁刷新）
+    "medium": 1800,   # 30 分钟（v2: 15→30）
+    "complex": 1200,  # 20 分钟（v2: 10→20）
 }
-DEFAULT_MAX_AGE = 900
+DEFAULT_MAX_AGE = 1800
 
 # 代码文件扩展名
 CODE_EXTENSIONS = {
@@ -49,21 +50,24 @@ ALLOWED_PATH_PREFIXES = (".agent-flow", ".dev-workflow", ".claude")
 
 GUARD_PROMPT = """[AgentFlow BLOCKED] Subtask-guard 未执行 — 你没有在修改代码前搜索知识库！
 
-按 subtask-guard 技能执行（硬性要求，不可跳过）:
+快速解决（任选一种）：
   ┌───────────────────────────────────────────────────┐
-  │ Step 1: 从 current_phase.md 提取子任务关键词      │
-  │ Step 2: 快速搜索（4步，全部必执行）                │
+  │ 方案 A: 快速搜索（推荐，1步即可解除）             │
+  │   Grep "{关键词}" .agent-flow/skills/             │
+  │   或 Grep "{关键词}" ~/.agent-flow/skills/        │
+  │   搜索后标记自动创建，立即可继续编辑              │
+  ├───────────────────────────────────────────────────┤
+  │ 方案 B: 完整 subtask-guard 流程（新子任务时使用） │
   │   1. Grep "{关键词}" .agent-flow/skills/          │
   │   2. Grep "{关键词}" ~/.agent-flow/skills/        │
   │   3. Grep "{关键词}" .agent-flow/memory/main/Soul.md │
   │   4. Grep "{关键词}" .agent-flow/wiki/ + 全局wiki │
-  │ Step 3: 代码定位（涉及代码修改的必须执行）         │
-  │ Step 4: 选择执行方式（Skill > Agent > Command）   │
-  │ Step 5: 按搜索结果+执行方式执行                   │
-  │ Step 6: 记录到 Memory.md                          │
+  ├───────────────────────────────────────────────────┤
+  │ 方案 C: 如果是跨会话误触，执行任意搜索即可重置    │
+  │   Grep "subtask" .agent-flow/                     │
   └───────────────────────────────────────────────────┘
 
-执行搜索后，.subtask-guard-done 标记会自动创建。"""
+标记有效期：Simple 60min / Medium 30min / Complex 20min"""
 
 
 def get_complexity_level() -> str:
@@ -102,14 +106,18 @@ def is_code_file(file_path: str) -> bool:
 
 
 def has_valid_guard() -> bool:
-    if not os.path.isfile(MARKER_FILE):
-        return False
-    try:
-        mtime = os.path.getmtime(MARKER_FILE)
-        age = time.time() - mtime
-        return age < get_max_age()
-    except Exception:
-        return False
+    """检查是否有有效的搜索守卫标记（v2: 同时检查 .subtask-guard-done 和 .search-done）"""
+    max_age = get_max_age()
+    for marker in [MARKER_FILE, SEARCH_MARKER_FILE]:
+        if os.path.isfile(marker):
+            try:
+                mtime = os.path.getmtime(marker)
+                age = time.time() - mtime
+                if age < max_age:
+                    return True
+            except Exception:
+                pass
+    return False
 
 
 def main():
