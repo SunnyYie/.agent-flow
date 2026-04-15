@@ -17,9 +17,12 @@ import json
 import os
 import sys
 
-# 标记文件
-USER_ACCEPTANCE_MARKER = ".agent-flow/state/.user-acceptance-done"
-COMPLEXITY_FILE = ".agent-flow/state/.complexity-level"
+from contract_utils import (
+    find_project_root,
+    get_complexity_level,
+    load_marker_entries,
+    read_state_path,
+)
 
 # 需要拦截的命令前缀
 BLOCKED_COMMANDS = [
@@ -29,46 +32,15 @@ BLOCKED_COMMANDS = [
     "gh pr create",
 ]
 
-
-def get_complexity_level() -> str:
-    """读取当前任务的复杂度等级"""
-    if not os.path.isfile(COMPLEXITY_FILE):
-        return "medium"
-    try:
-        with open(COMPLEXITY_FILE, "r", encoding="utf-8") as f:
-            for line in f:
-                line = line.strip()
-                if line.startswith("level="):
-                    level = line.split("=", 1)[1].strip().lower()
-                    if level in ("simple", "medium", "complex"):
-                        return level
-    except Exception:
-        pass
-    return "medium"
-
-
-def has_user_acceptance() -> bool:
-    """检查用户验收标记是否存在且有效"""
-    if not os.path.isfile(USER_ACCEPTANCE_MARKER):
-        return False
-    try:
-        with open(USER_ACCEPTANCE_MARKER, "r", encoding="utf-8") as f:
-            content = f.read().strip()
-            return bool(content)  # 非空即为有效
-    except Exception:
-        return False
-
-
-def check_phase_acceptance(phase: str) -> bool:
-    """检查特定阶段的验收是否通过（Complex 任务用）"""
-    if not os.path.isfile(USER_ACCEPTANCE_MARKER):
-        return False
-    try:
-        with open(USER_ACCEPTANCE_MARKER, "r", encoding="utf-8") as f:
-            content = f.read()
-        return f"{phase}=accepted" in content
-    except Exception:
-        return False
+def check_phase_acceptance(marker_path, phase: str) -> bool:
+    for entry in load_marker_entries(marker_path):
+        if (
+            entry.get("phase") == phase
+            and entry.get("status") == "accepted"
+            and all(entry.get(key, "").strip() for key in ("timestamp", "task", "confirmed_by", "summary"))
+        ):
+            return True
+    return False
 
 
 def is_blocked_command(command: str) -> bool:
@@ -81,12 +53,11 @@ def is_blocked_command(command: str) -> bool:
 
 
 def main():
-    # 只在 agent-flow 项目中生效
-    if not os.path.isdir(".agent-flow") and not os.path.isdir(".dev-workflow"):
+    project_root = find_project_root()
+    if project_root is None:
         sys.exit(0)
 
-    # 只在 pre-flight 完成后执行
-    phase_file = ".agent-flow/state/current_phase.md"
+    phase_file = read_state_path(project_root, "current_phase.md")
     if not os.path.isfile(phase_file) or os.path.getsize(phase_file) <= 10:
         sys.exit(0)
 
@@ -111,16 +82,23 @@ def main():
         sys.exit(0)
 
     # 检查用户验收标记
-    if has_user_acceptance():
-        complexity = get_complexity_level()
+    acceptance_marker = read_state_path(project_root, ".user-acceptance-done")
+    has_any_acceptance = any(
+        entry.get("status") == "accepted"
+        and all(entry.get(key, "").strip() for key in ("phase", "timestamp", "task", "confirmed_by", "summary"))
+        for entry in load_marker_entries(acceptance_marker)
+    )
+
+    if has_any_acceptance:
+        complexity = get_complexity_level(project_root)
         # Complex 任务需要检查每个阶段
         if complexity == "complex":
             missing = []
-            if not check_phase_acceptance("research"):
+            if not check_phase_acceptance(acceptance_marker, "research"):
                 missing.append("Research")
-            if not check_phase_acceptance("plan"):
+            if not check_phase_acceptance(acceptance_marker, "plan"):
                 missing.append("Plan")
-            if not check_phase_acceptance("implement"):
+            if not check_phase_acceptance(acceptance_marker, "implement"):
                 missing.append("Implement")
 
             if not missing:
@@ -144,14 +122,14 @@ def main():
             sys.exit(0)  # Simple/Medium 有验收标记即可
 
     # 无验收标记
-    complexity = get_complexity_level()
+    complexity = get_complexity_level(project_root)
 
     if complexity == "simple":
         # Simple 任务：软提醒
         print(
             "[AgentFlow REMINDER] 即将推送代码，但用户验收未完成！\n"
             "Simple 任务建议：确认用户已看过变更内容并同意推送。\n"
-            "创建验收标记: 写入 .agent-flow/state/.user-acceptance-done"
+            "创建验收标记: 写入结构化的 .agent-flow/state/.user-acceptance-done"
         )
         sys.exit(0)
     else:
@@ -163,8 +141,13 @@ def main():
             "  2. 明确告知影响范围和回滚方案\n"
             "  3. 获得用户明确确认（如'可以推送'、'验收通过'）\n"
             "  4. 写入标记: .agent-flow/state/.user-acceptance-done\n"
-            f"     格式: research=accepted\\nplan=accepted\\nimplement=accepted\\n"
-            f"     (Simple只需写 implement=accepted)\n"
+            "     每条记录至少包含:\n"
+            "     phase=implement|plan|research\n"
+            "     status=accepted\n"
+            "     timestamp=ISO8601\n"
+            "     task=当前任务\n"
+            "     confirmed_by=user\n"
+            "     summary=用户确认摘要\n\n"
             "  5. 再次尝试推送\n\n"
             "⚠️ 禁止：自行创建验收标记而不与用户确认"
         )

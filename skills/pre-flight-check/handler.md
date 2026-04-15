@@ -147,7 +147,7 @@ RPI阶段: {Research|Plan|Implement}
 
 ### Step 6: 执行计划文档化（必须写入文件）
 
-将任务分解写入 `.agent-flow/state/current_phase.md`：
+将任务分解写入 `.agent-flow/state/current_phase.md`（canonical）：
 
 ```markdown
 # 任务: {任务描述}
@@ -159,11 +159,17 @@ RPI阶段: {Research|Plan|Implement}
 - Plan: {待执行}
 - Implement: {待执行}
 
-## 执行计划
+## 实施计划
 - T1: {子任务描述}（{有技能:xxx / 需搜索方案 / 需安装工具:xxx}）[{执行方式: Skill内联/Agent独立}]
 - T2: {子任务描述}（{有技能:xxx / 需搜索方案}）[{执行方式}]
 - T3: {子任务描述} ⚠️双验收 [{执行方式}]
 - ...
+
+## 变更点
+- CP1: {核心变更点}
+
+## 验收标准
+- AC1: {验收标准}
 
 模式: {serial|parallel}
 依赖: {T1→T2→T3 或 T1→[T2,T3]→T4}
@@ -185,10 +191,18 @@ RPI阶段: {Research|Plan|Implement}
 4. 用户确认 GO → 开始按计划执行
 5. **禁止**：用户未确认就开始执行
 
-**用户验收标记**（v3.0 新增）：GO 通过后，Agent 应创建对应当前阶段的用户验收标记：
-- Research 阶段 GO → 写入 `research=accepted` 到 `.agent-flow/state/.user-acceptance-done`
-- Plan 阶段 GO → 追加 `plan=accepted`
-- Implement 阶段完成 → 追加 `implement=accepted`
+**用户验收标记**（v3.0 新增）：GO 通过后，Agent 应追加结构化记录到 `.agent-flow/state/.user-acceptance-done`：
+
+```text
+phase={research|plan|implement}
+status=accepted
+timestamp={ISO8601}
+task={当前任务描述}
+confirmed_by=user
+summary={用户确认摘要}
+```
+
+多阶段验收使用空行分隔多条记录。
 
 **此标记是推送代码的硬性前置条件**（Medium/Complex 任务）。`user-acceptance-guard.py` hook 会在 `git push` 和 MR 创建时检查此标记。
 

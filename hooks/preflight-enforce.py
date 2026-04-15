@@ -11,6 +11,8 @@ import json
 import os
 import sys
 
+from contract_utils import find_project_root, get_complexity_level, read_state_path
+
 
 # 始终放行的工具（读取/搜索/交互类）
 ALLOWED_TOOLS = {
@@ -73,41 +75,17 @@ def is_code_file_for_preflight(file_path: str) -> bool:
     return False
 
 
-def get_complexity_level() -> str:
-    """读取当前任务的复杂度等级"""
-    complexity_file = ".agent-flow/state/.complexity-level"
-    if not os.path.isfile(complexity_file):
-        return "medium"
-    try:
-        with open(complexity_file, "r", encoding="utf-8") as f:
-            for line in f:
-                line = line.strip()
-                if line.startswith("level="):
-                    level = line.split("=", 1)[1].strip().lower()
-                    if level in ("simple", "medium", "complex"):
-                        return level
-    except Exception:
-        pass
-    return "medium"
-
-
 def main():
-    # 只在配置了 agent-flow 的项目中生效
-    if not os.path.isdir(".agent-flow") and not os.path.isdir(".dev-workflow"):
+    project_root = find_project_root()
+    if project_root is None:
         sys.exit(0)
 
     # 检查 pre-flight 是否已完成
     # 同时检查 .agent-flow/state/ 和 .dev-workflow/state/ 两个路径
-    phase_files = [
-        ".agent-flow/state/current_phase.md",
-        ".dev-workflow/state/current_phase.md",
-    ]
-    complexity_file = ".agent-flow/state/.complexity-level"
+    phase_file = read_state_path(project_root, "current_phase.md")
+    complexity_file = read_state_path(project_root, ".complexity-level")
 
-    phase_found = any(
-        os.path.isfile(pf) and os.path.getsize(pf) > 10
-        for pf in phase_files
-    )
+    phase_found = os.path.isfile(phase_file) and os.path.getsize(phase_file) > 10
 
     if phase_found:
         # current_phase.md 存在，但还需要检查 .complexity-level 是否存在
@@ -119,7 +97,7 @@ def main():
             pass
 
     # Simple 任务简化检查：如果有 .simple-preflight-done 标记，放行
-    complexity = get_complexity_level()
+    complexity = get_complexity_level(project_root)
     if complexity == "simple" and os.path.isfile(SIMPLE_PREFLIGHT_MARKER):
         sys.exit(0)  # Simple 任务简化 pre-flight 已完成，放行
 
@@ -147,9 +125,6 @@ def main():
             sys.exit(0)
 
         # 代码文件：判断阻断原因
-        phase_file = ".agent-flow/state/current_phase.md"
-        complexity_file = ".agent-flow/state/.complexity-level"
-
         if not os.path.isfile(phase_file) or os.path.getsize(phase_file) <= 10:
             print(
                 f"[AgentFlow BLOCKED] Pre-flight 未完成，禁止修改代码文件: {file_path}\n"
@@ -171,9 +146,6 @@ def main():
         # 允许 mkdir 创建 agent-flow 目录
         if command.strip().startswith("mkdir") and ".agent-flow" in command:
             sys.exit(0)
-
-        phase_file = ".agent-flow/state/current_phase.md"
-        complexity_file = ".agent-flow/state/.complexity-level"
 
         if not os.path.isfile(phase_file) or os.path.getsize(phase_file) <= 10:
             print(

@@ -30,10 +30,15 @@ When all sub-tasks in a phase are completed and dual-verified.
 
 写入 `.agent-flow/state/.user-acceptance-done`：
 ```
-{phase_name}=accepted
+phase={phase_name}
+status=accepted
 timestamp={ISO8601}
 task={当前任务描述}
+confirmed_by=user
+summary={用户确认摘要}
 ```
+
+多个阶段使用空行分隔多条记录。
 
 **按复杂度的验收要求**：
 - **Simple**: 只需在 Implement 阶段完成后创建一次（`implement=accepted`）

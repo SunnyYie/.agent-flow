@@ -19,9 +19,7 @@ import os
 import sys
 import time
 
-MARKER_FILE = ".agent-flow/state/.subtask-guard-done"
-SEARCH_MARKER_FILE = ".agent-flow/state/.search-done"  # v2: search-tracker.py 标记也作为有效证据
-COMPLEXITY_FILE = ".agent-flow/state/.complexity-level"
+from contract_utils import find_project_root, get_complexity_level, read_state_path
 
 # 各复杂度的标记有效期（秒）— v2: 适度放宽
 MAX_AGE_MAP = {
@@ -70,24 +68,8 @@ GUARD_PROMPT = """[AgentFlow BLOCKED] Subtask-guard 未执行 — 你没有在�
 标记有效期：Simple 60min / Medium 30min / Complex 20min"""
 
 
-def get_complexity_level() -> str:
-    if not os.path.isfile(COMPLEXITY_FILE):
-        return "medium"
-    try:
-        with open(COMPLEXITY_FILE, "r", encoding="utf-8") as f:
-            for line in f:
-                line = line.strip()
-                if line.startswith("level="):
-                    level = line.split("=", 1)[1].strip().lower()
-                    if level in ("simple", "medium", "complex"):
-                        return level
-    except Exception:
-        pass
-    return "medium"
-
-
-def get_max_age() -> int:
-    level = get_complexity_level()
+def get_max_age(project_root) -> int:
+    level = get_complexity_level(project_root)
     return MAX_AGE_MAP.get(level, DEFAULT_MAX_AGE)
 
 
@@ -105,10 +87,13 @@ def is_code_file(file_path: str) -> bool:
     return False
 
 
-def has_valid_guard() -> bool:
+def has_valid_guard(project_root) -> bool:
     """检查是否有有效的搜索守卫标记（v2: 同时检查 .subtask-guard-done 和 .search-done）"""
-    max_age = get_max_age()
-    for marker in [MARKER_FILE, SEARCH_MARKER_FILE]:
+    max_age = get_max_age(project_root)
+    for marker in [
+        read_state_path(project_root, ".subtask-guard-done"),
+        read_state_path(project_root, ".search-done"),
+    ]:
         if os.path.isfile(marker):
             try:
                 mtime = os.path.getmtime(marker)
@@ -121,20 +106,12 @@ def has_valid_guard() -> bool:
 
 
 def main():
-    # 只在 agent-flow 项目中生效
-    if not os.path.isdir(".agent-flow") and not os.path.isdir(".dev-workflow"):
+    project_root = find_project_root()
+    if project_root is None:
         sys.exit(0)
 
-    # 只在 pre-flight 完成后执行
-    # 同时检查两个路径
-    phase_files = [
-        ".agent-flow/state/current_phase.md",
-        ".dev-workflow/state/current_phase.md",
-    ]
-    phase_found = any(
-        os.path.isfile(pf) and os.path.getsize(pf) > 10
-        for pf in phase_files
-    )
+    phase_file = read_state_path(project_root, "current_phase.md")
+    phase_found = os.path.isfile(phase_file) and os.path.getsize(phase_file) > 10
     if not phase_found:
         sys.exit(0)
 
@@ -160,7 +137,7 @@ def main():
         sys.exit(0)
 
     # 检查 subtask-guard 标记
-    if has_valid_guard():
+    if has_valid_guard(project_root):
         sys.exit(0)  # 已执行，放行
 
     # 无标记 → 阻断

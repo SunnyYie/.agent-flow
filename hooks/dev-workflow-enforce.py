@@ -17,6 +17,14 @@ import subprocess
 import sys
 import time
 
+from contract_utils import (
+    detect_plan_format,
+    find_project_root,
+    get_complexity_level,
+    read_state_path,
+    structured_marker_exists,
+)
+
 # ============================================================
 # 配置
 # ============================================================
@@ -120,9 +128,9 @@ def get_git_branch() -> str:
         return ""
 
 
-def has_implementation_plan() -> bool:
+def has_implementation_plan(project_root) -> tuple[bool, bool]:
     """检查是否存在实施计划文档"""
-    state_dir = ".agent-flow/state"
+    state_dir = read_state_path(project_root, "current_phase.md").parent
 
     # 检查独立的实施计划文件
     plan_files = [
@@ -136,21 +144,20 @@ def has_implementation_plan() -> bool:
 
     # 检查 current_phase.md 中是否包含计划章节
     # 同时检查两个可能的路径
-    phase_paths = [
-        os.path.join(state_dir, "current_phase.md"),
-        ".dev-workflow/state/current_phase.md",
-    ]
-    for phase_file in phase_paths:
-        if os.path.isfile(phase_file):
-            try:
-                with open(phase_file, "r", encoding="utf-8") as f:
-                    content = f.read()
-                if any(marker in content for marker in PLAN_MARKERS):
-                    return True
-            except Exception:
-                pass
+    phase_file = read_state_path(project_root, "current_phase.md")
+    if os.path.isfile(phase_file):
+        try:
+            with open(phase_file, "r", encoding="utf-8") as f:
+                content = f.read()
+            plan_format = detect_plan_format(content)
+            if plan_format == "canonical":
+                return True, False
+            if plan_format == "legacy":
+                return True, True
+        except Exception:
+            pass
 
-    return False
+    return False, False
 
 
 # ============================================================
@@ -158,20 +165,14 @@ def has_implementation_plan() -> bool:
 # ============================================================
 
 def main():
-    # 只在 agent-flow 项目中生效
-    if not os.path.isdir(".agent-flow") and not os.path.isdir(".dev-workflow"):
+    project_root = find_project_root()
+    if project_root is None:
         sys.exit(0)
 
     # 只在 pre-flight 完成后执行（preflight-enforce.py 处理 pre-flight 前的阶段）
     # 同时检查两个路径
-    phase_files = [
-        ".agent-flow/state/current_phase.md",
-        ".dev-workflow/state/current_phase.md",
-    ]
-    phase_found = any(
-        os.path.isfile(pf) and os.path.getsize(pf) > 10
-        for pf in phase_files
-    )
+    phase_file = read_state_path(project_root, "current_phase.md")
+    phase_found = os.path.isfile(phase_file) and os.path.getsize(phase_file) > 10
     if not phase_found:
         sys.exit(0)
 
@@ -206,7 +207,8 @@ def main():
             sys.exit(2)
 
         # 检查 2: 实施计划文档
-        if not has_implementation_plan():
+        has_plan, is_legacy_plan = has_implementation_plan(project_root)
+        if not has_plan:
             print(
                 f"[AgentFlow BLOCKED] 没有实施计划文档，禁止修改代码文件！\n"
                 f"请先完成:\n"
@@ -217,9 +219,15 @@ def main():
                 f"目标文件: {file_path}"
             )
             sys.exit(2)
+        if is_legacy_plan:
+            print(
+                "[AgentFlow REMINDER] 当前计划文档为 legacy 格式，已兼容放行。\n"
+                "建议迁移到 canonical 章节：# 任务 / ## 复杂度 / ## RPI 阶段规划 / ## 实施计划 / ## 变更点 / ## 验收标准"
+            )
 
         # 检查 3: 需求澄清标记（v3.0 新增，软提醒）
-        if not os.path.isfile(REQUIREMENT_CLARIFIED_MARKER):
+        requirement_marker = read_state_path(project_root, ".requirement-clarified")
+        if not structured_marker_exists(requirement_marker, ("timestamp", "task", "confirmed_by", "summary")):
             # 检查是否有 requirement-decomposition.md（旧版兼容）
             req_decomp = ".agent-flow/state/requirement-decomposition.md"
             if os.path.isfile(req_decomp):
@@ -241,7 +249,8 @@ def main():
             # v1: 软提醒不阻断，渐进引入后可升级为硬阻断
 
         # 检查 4: 设计决策确认标记（v3.0 新增，软提醒）
-        if not os.path.isfile(DESIGN_CONFIRMED_MARKER):
+        design_marker = read_state_path(project_root, ".design-confirmed")
+        if not structured_marker_exists(design_marker, ("timestamp", "task", "confirmed_by", "summary")):
             print(
                 f"[AgentFlow REMINDER] 设计决策确认标记(.design-confirmed)不存在！\n"
                 f"建议：执行 requirement-decomposition 技能的 Phase 5.5 设计决策检查点，\n"

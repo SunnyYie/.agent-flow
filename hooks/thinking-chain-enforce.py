@@ -20,8 +20,7 @@ import os
 import sys
 import time
 
-MARKER_FILE = ".agent-flow/state/.search-done"
-COMPLEXITY_FILE = ".agent-flow/state/.complexity-level"
+from contract_utils import find_project_root, get_complexity_level, read_state_path
 
 # 各复杂度的搜索标记有效期（秒）
 MAX_SEARCH_AGE_MAP = {
@@ -83,26 +82,9 @@ CHAIN_PROMPT = """[AgentFlow BLOCKED] 思维链未完成 — 你没有先搜索�
   Grep '关键词' ~/.agent-flow/wiki/pitfalls/"""
 
 
-def get_complexity_level() -> str:
-    """读取当前任务的复杂度等级"""
-    if not os.path.isfile(COMPLEXITY_FILE):
-        return "medium"  # 默认 Medium
-    try:
-        with open(COMPLEXITY_FILE, "r", encoding="utf-8") as f:
-            for line in f:
-                line = line.strip()
-                if line.startswith("level="):
-                    level = line.split("=", 1)[1].strip().lower()
-                    if level in ("simple", "medium", "complex"):
-                        return level
-    except Exception:
-        pass
-    return "medium"
-
-
-def get_max_search_age() -> int:
+def get_max_search_age(project_root) -> int:
     """根据复杂度获取搜索标记有效期"""
-    level = get_complexity_level()
+    level = get_complexity_level(project_root)
     return MAX_SEARCH_AGE_MAP.get(level, DEFAULT_MAX_SEARCH_AGE)
 
 
@@ -158,34 +140,26 @@ def is_readonly_bash(command: str) -> bool:
     return False
 
 
-def has_recent_search() -> bool:
+def has_recent_search(marker_file, project_root) -> bool:
     """检查是否有近期的搜索标记（根据复杂度调整有效期）"""
-    if not os.path.isfile(MARKER_FILE):
+    if not os.path.isfile(marker_file):
         return False
     try:
-        mtime = os.path.getmtime(MARKER_FILE)
+        mtime = os.path.getmtime(marker_file)
         age = time.time() - mtime
-        max_age = get_max_search_age()
+        max_age = get_max_search_age(project_root)
         return age < max_age
     except Exception:
         return False
 
 
 def main():
-    # 只在 agent-flow 项目中生效
-    if not os.path.isdir(".agent-flow") and not os.path.isdir(".dev-workflow"):
+    project_root = find_project_root()
+    if project_root is None:
         sys.exit(0)
 
-    # 只在 pre-flight 完成后执行
-    # 同时检查 .agent-flow/state/ 和 .dev-workflow/state/ 两个路径
-    phase_files = [
-        ".agent-flow/state/current_phase.md",
-        ".dev-workflow/state/current_phase.md",
-    ]
-    phase_found = any(
-        os.path.isfile(pf) and os.path.getsize(pf) > 10
-        for pf in phase_files
-    )
+    phase_file = read_state_path(project_root, "current_phase.md")
+    phase_found = os.path.isfile(phase_file) and os.path.getsize(phase_file) > 10
     if not phase_found:
         sys.exit(0)
 
@@ -219,11 +193,12 @@ def main():
         sys.exit(0)
 
     # 检查搜索标记
-    if has_recent_search():
+    marker_file = read_state_path(project_root, ".search-done")
+    if has_recent_search(marker_file, project_root):
         sys.exit(0)  # 搜索已做，允许执行
 
     # 无搜索标记 → 根据复杂度决定行为
-    complexity = get_complexity_level()
+    complexity = get_complexity_level(project_root)
 
     if complexity == "simple" and is_first_violation():
         # Simple 任务首次违规：软提醒（不阻断）
