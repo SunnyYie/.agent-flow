@@ -29,7 +29,7 @@ created: 2026-04-15
 jira issue view KEY
 ```
 
-输出包含：基础信息（状态/优先级/类型/负责人/报告人）、Labels、Parent Issue、Subtasks 表格、Description、Comments 列表。
+输出包含：基础信息（状态/优先级/类型/负责人/报告人）、Labels、Parent Issue、Subtasks 表格、Description（若 Jira 返回 null 则显示 "No description"）、Comments 列表。
 
 ### P2: JQL 搜索
 

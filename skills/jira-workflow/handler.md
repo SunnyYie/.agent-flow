@@ -55,9 +55,10 @@ jira issue transition KEY
 ```
 
 输出表格中 Fields 列含义：
-- N required → 该流转需要 N 个必填字段，必须用 --field 提供
-- optional → 有可选字段，不提供也可以流转
-- - → 无额外字段，直接流转即可
+- `N required` → 该流转需要 N 个必填字段，必须用 `--field` 提供
+- `N required, M may require` → 有 N 个必填 + M 个可能被工作流验证器要求的字段
+- `N fields (may require)` → Jira 标记为可选但实际可能必需的字段，建议预填
+- `-` → 无额外字段，直接流转即可
 
 ### P3: 执行简单流转（无字段要求）
 
@@ -89,6 +90,22 @@ jira issue transition KEY --id TRANSITION_ID \
 | 需要所有子任务都完成才可以继续 | 子任务未全部 Done | 流转子任务到完成状态 |
 | XXX is required in this transition | 缺少必填字段 | P2 查询字段要求，P4 补充 --field |
 | Transition ID X not found | ID 不属于当前状态 | P2 重新查询可用流转 |
+| 字段校验未通过（字段值被拒） | --field 提供的值不合法 | CLI 自动提示重新输入，无需手动重跑 |
+
+### P6: 添加外链（MR 链接等）
+
+开发完成或提交 MR 后，常需在 Issue 上关联外部链接：
+
+```bash
+# 添加 MR 链接
+jira issue remotelink KEY --url https://gitlab.com/merge/42 --title "MR !42"
+
+# 查看已有外链
+jira issue remotelink KEY --list
+
+# 删除外链
+jira issue remotelink KEY --delete LINK_ID
+```
 
 ## Rules
 
