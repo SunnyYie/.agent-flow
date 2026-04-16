@@ -24,24 +24,55 @@ from contract_utils import find_project_root, get_complexity_level, read_state_p
 
 # 各复杂度的搜索标记有效期（秒）
 MAX_SEARCH_AGE_MAP = {
-    "simple": 1800,   # 30 分钟
-    "medium": 900,    # 15 分钟
-    "complex": 600,   # 10 分钟
+    "simple": 1800,  # 30 分钟
+    "medium": 900,  # 15 分钟
+    "complex": 600,  # 10 分钟
 }
 DEFAULT_MAX_SEARCH_AGE = 600  # 默认 Medium
 
 # 代码文件扩展名
 CODE_EXTENSIONS = {
-    ".ts", ".tsx", ".js", ".jsx", ".py", ".rs", ".go", ".java", ".kt",
-    ".swift", ".m", ".h", ".c", ".cpp", ".rb", ".php", ".vue", ".svelte",
-    ".css", ".scss", ".less", ".html", ".sql", ".graphql",
-    ".sh", ".bash", ".zsh",
+    ".ts",
+    ".tsx",
+    ".js",
+    ".jsx",
+    ".py",
+    ".rs",
+    ".go",
+    ".java",
+    ".kt",
+    ".swift",
+    ".m",
+    ".h",
+    ".c",
+    ".cpp",
+    ".rb",
+    ".php",
+    ".vue",
+    ".svelte",
+    ".css",
+    ".scss",
+    ".less",
+    ".html",
+    ".sql",
+    ".graphql",
+    ".sh",
+    ".bash",
+    ".zsh",
 }
 
 CODE_FILENAMES = {
-    "package.json", "tsconfig.json", "Makefile", "Dockerfile",
-    "Podfile", "Gemfile", "build.gradle", "settings.gradle",
-    "app.json", "babel.config.js", "metro.config.js",
+    "package.json",
+    "tsconfig.json",
+    "Makefile",
+    "Dockerfile",
+    "Podfile",
+    "Gemfile",
+    "build.gradle",
+    "settings.gradle",
+    "app.json",
+    "babel.config.js",
+    "metro.config.js",
 }
 
 # 允许写入的路径（不受思维链检查限制）
@@ -49,20 +80,58 @@ ALLOWED_PATH_PREFIXES = (".agent-flow", ".dev-workflow", ".claude")
 
 # 只读 Bash 命令前缀（不需要搜索标记）
 READONLY_BASH_PREFIXES = (
-    "ls", "cat", "head", "tail", "find", "grep", "rg", "wc",
-    "which", "pwd", "whoami", "uname", "env", "printenv", "echo",
-    "type ", "command ",
-    "git status", "git log", "git diff", "git branch",
-    "git remote", "git rev-parse", "git show",
-    "git stash", "git worktree", "git checkout", "git switch",
-    "git pull", "git fetch",
-    "lark-cli", "agent-flow",
-    "python3 -c", "node -e",
+    "ls",
+    "cat",
+    "head",
+    "tail",
+    "find",
+    "grep",
+    "rg",
+    "wc",
+    "which",
+    "pwd",
+    "whoami",
+    "uname",
+    "env",
+    "printenv",
+    "echo",
+    "type ",
+    "command ",
+    "git status",
+    "git log",
+    "git diff",
+    "git branch",
+    "git remote",
+    "git rev-parse",
+    "git show",
+    "git stash",
+    "git worktree",
+    "git checkout",
+    "git switch",
+    "git pull",
+    "git fetch",
+    "lark-cli",
+    "agent-flow",
+    "python3 -c",
+    "node -e",
+    ".venv/bin/python",
     # 测试命令（只读，不修改代码）
-    "pytest", ".venv/bin/pytest", ".venv/bin/python -m pytest","npx tsx","npx",
+    "pytest",
+    ".venv/bin/pytest",
+    ".venv/bin/python -m pytest",
+    "npx tsx",
+    "npx",
     # 系统管理命令（非代码修改）
-    "mkdir", "chmod", "touch", "cp", "mv", "ln",
-    "tar", "zip", "unzip", "xxd",
+    "mkdir",
+    "chmod",
+    "touch",
+    "cp",
+    "mv",
+    "ln",
+    "tar",
+    "zip",
+    "unzip",
+    "xxd",
 )
 
 # 思维链提示信息
