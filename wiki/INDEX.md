@@ -1,5 +1,22 @@
 # Global Wiki 知识导航
 
+## Topic Hubs（主题枢纽）— 跨分类快速查找
+
+> 按主题一键查找所有相关知识，无需跨分类搜索。
+
+- [[workflow|topics/workflow]] — 工作流（模式+踩坑+概念+决策，20篇）
+- [[llm-coding|topics/llm-coding]] — LLM编程（踩坑+原则+退化，10篇）
+- [[feishu|topics/feishu]] — 飞书（模式+踩坑+工具，3篇）
+- [[multi-agent|topics/multi-agent]] — 多Agent（模式+踩坑+角色，8篇）
+- [[agent-flow-cli|topics/agent-flow-cli]] — AgentFlow CLI（踩坑+配置+决策，6篇）
+- [[architecture|topics/architecture]] — 架构（模式+概念+决策，7篇）
+- [[security|topics/security]] — 安全（踩坑+权限，2篇）
+- [[react-native|topics/react-native]] — React Native（踩坑，2篇）
+
+## Tag Index（标签索引）
+
+> 按标签精确查找文档。[[TAG-INDEX|查看完整标签索引]]
+
 ## Patterns（成功模式）
 
 - [feishu](patterns/feishu/) — 飞书相关模式

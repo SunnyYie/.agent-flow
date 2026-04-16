@@ -1,5 +1,7 @@
 /.DS_Store
 /state/*
+.agent-flow/state/*
+.dev-workflow/state/*
 hooks/.agent-flow/*.db
 hooks/.agent-flow/state/*
 hooks/__pycache__/*

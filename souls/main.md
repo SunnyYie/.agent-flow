@@ -38,5 +38,7 @@
 
 - **主导航**: `.agent-flow/wiki/INDEX.md`
 - **全局导航**: `~/.agent-flow/wiki/INDEX.md`
+- **主题枢纽**: `wiki/topics/workflow.md`, `wiki/topics/llm-coding.md`（跨分类一键查找）
+- **标签索引**: `wiki/TAG-INDEX.md`（按标签精确查找文档）
 - **常读模式**: `wiki/patterns/workflow/`, `wiki/concepts/`
 - **常读踩坑**: `wiki/pitfalls/workflow/`, `wiki/pitfalls/security/`, `wiki/pitfalls/llm-coding/context-pollution.md`

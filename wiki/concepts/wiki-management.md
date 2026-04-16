@@ -19,12 +19,26 @@ wiki/
 ├── purpose.md          # 项目方向与核心问题
 ├── INDEX.md            # 动态导航索引（学习路径）
 ├── GLOSSARY.md         # 术语枢纽（交叉链接中心）
+├── TAG-INDEX.md        # 标签索引（tag → 文档映射，快速查找）
+├── topics/             # 主题枢纽（跨分类聚合视图）
+│   └── {topic}.md      # 单个主题页（聚合 patterns+pitfalls+concepts+tools）
 ├── patterns/           # 成功模式
 ├── pitfalls/           # 踩坑记录
 ├── concepts/           # 核心概念
 ├── decisions/          # 架构决策记录（ADR）
 └── queries/            # 高价值Q&A存档
 ```
+
+## 主题枢纽（Topic Hub）
+
+主题枢纽是跨分类的知识聚合页面，将同一主题的 patterns、pitfalls、concepts、tools、decisions 文档统一展示。Agent 通过 `Read` 主题枢纽即可获取该主题的完整知识视图，无需跨目录 grep。
+
+**使用场景**：Agent 需要查找某主题（如 "feishu"、"workflow"）时，优先 `Read` 对应的主题枢纽 `wiki/topics/{keyword}.md`，而非全量 grep 整个 wiki 目录。
+
+**创建规则**：
+1. 当同一主题的文档散落在 ≥2 个分类目录时，应创建主题枢纽
+2. 主题枢纽只包含链接和一句话摘要，不重复已有文档内容
+3. 主题枢纽之间通过 "Related Topics" 互相引用
 
 ## 页面创建规范
 
@@ -33,8 +47,8 @@ wiki/
 ```markdown
 ---
 title: "页面标题"
-category: pattern | pitfall | concept | decision | query
-module: workflow | security | environment | implementation | testing | architecture | gitlab | react-native | feishu
+category: pattern | pitfall | concept | decision | query | topic-hub
+module: workflow | security | environment | implementation | testing | architecture | gitlab | react-native | feishu | llm-coding | multi-agent | agent-flow | meta
 agents: [main, executor, verifier]
 scope: global | project
 confidence: 0.0-1.0

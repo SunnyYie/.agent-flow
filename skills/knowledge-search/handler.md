@@ -25,7 +25,12 @@ created: 2026-04-14
 
 1. **Skills**: `Grep` 搜索 `~/.agent-flow/skills/` 和 `.agent-flow/skills/`
 2. **Soul**: `Grep` 搜索 `.agent-flow/memory/main/Soul.md`
-3. **Wiki**: `Grep` 搜索 `~/.agent-flow/wiki/` 和 `.agent-flow/wiki/`
+3. **Wiki 主题查找**（快速路径，三级查找）：
+   a. **主题枢纽**（O(1)）：`Read` 主题枢纽 `~/.agent-flow/wiki/topics/{keyword}.md`
+      → 存在则直接获取该主题所有相关文档链接
+   b. **标签索引**（O(1)）：`Grep` 标签索引 `~/.agent-flow/wiki/TAG-INDEX.md`
+      → 按标签精确匹配文档路径
+   c. **全量搜索**（兜底）：`Grep` 搜索 `~/.agent-flow/wiki/` 和 `.agent-flow/wiki/` 全目录
 4. **找到匹配** → 按 Procedure 执行，跳到 Step 4
 
 ### Step 2: 外部搜索（有成本，本地无果时）
