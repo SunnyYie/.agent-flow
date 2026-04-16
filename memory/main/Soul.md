@@ -42,6 +42,24 @@ REFLECT阶段容易遗漏：执行任务时使用的新模板/新规范，必须
 如果是从WebSearch获取的规范，更应该沉淀——否则下次还要再搜一遍
 confidence: 0.9
 
+### 2026-04-15 | module:maimai | type:pitfall | abstraction:project
+
+maimai 圈子双架构陷阱：
+- 同事圈(company_circle)在 rn/page/gossip/pages/company_circle/，数据来自 circleTop.core_area_data_list
+- 组合圈/实习圈(company-circle)在 rn/page/content/pages/company-circle/，数据来自 API 的 combo_circle_top_info
+- 修改实习圈功能时，必须从 CombinationListStore 的 API 响应处理函数追踪数据来源，不能用同事圈的数据字段
+- 踩坑：首次实现错误地用了同事圈的 core_area_data_list，用户纠正后才改为 combo_circle_top_info
+confidence: 0.95
+validations: 1
+
+### 2026-04-15 | module:react | type:pitfall | abstraction:universal
+
+React 子组件事件处理：永远通过 callback props 从父组件传递事件处理器，禁止在子组件中复制导航/路由逻辑
+原因：在 CombinationListHeader 中复制了 handleEntranceClick（含 MMTrack + MMNative.openSchema），用户指出应统一写在父组件 VajraPositionV3 通过 props 传回调
+做法：子组件只负责渲染和触发回调（onEntranceClick?.(item)），父组件负责业务逻辑（埋点+导航）
+confidence: 0.95
+validations: 1
+
 ### 2026-04-13 | module:enforcement | type:pattern | abstraction:universal
 
 规则执行保障三层架构：短规则 + 详细技能 + 守卫技能
