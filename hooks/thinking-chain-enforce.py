@@ -58,6 +58,8 @@ READONLY_BASH_PREFIXES = (
     "git pull", "git fetch",
     "lark-cli", "agent-flow",
     "python3 -c", "node -e",
+    # 测试命令（只读，不修改代码）
+    "pytest", ".venv/bin/pytest", ".venv/bin/python -m pytest",
     # 系统管理命令（非代码修改）
     "mkdir", "chmod", "touch", "cp", "mv", "ln",
     "tar", "zip", "unzip", "xxd",
