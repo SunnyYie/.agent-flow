@@ -113,6 +113,7 @@ READONLY_BASH_PREFIXES = (
     "lark-cli",
     "agent-flow",
     "python3 -c",
+    "python -c",
     "node -e",
     ".venv/bin/python",
     # 测试命令（只读，不修改代码）
