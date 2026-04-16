@@ -1,54 +1,69 @@
 #!/usr/bin/env python3
 """
-AgentFlow Context Budget Tracker — PostToolUse hook
-在每次文件读取后，估算消耗的 token 数并更新 flow-context.yaml 中的预算。
+AgentFlow Context Budget Tracker — PostToolUse hook (Read|Grep|Glob matcher)
 
-估算方法：
-- 读取的文件大小 × 0.3（保守估算：混合中英文内容）
-- 追加到 context_budget.used
-- 根据 used/max 比例更新 status（healthy|warning|critical）
-- 当 status 变化时注入提醒
+Track estimated context token usage after each tool call.
 
-仅在 flow-context.yaml 存在时生效（Phase 2+ 架构）。
+Logic:
+  - After each Read tool call, estimate tokens from file size (bytes / 3.3)
+  - After each Grep/Glob tool call, estimate tokens from output length
+  - Accumulate total in .agent-flow/state/flow-context.yaml under context_budget.used
+  - When usage exceeds 50%: print warning
+  - When usage exceeds 70%: print critical warning recommending sub-agent delegation
+
+Output: Update flow-context.yaml, print <system-reminder> block when thresholds exceeded.
+
+Only activates when flow-context.yaml exists (Phase 2+ architecture).
 """
+from __future__ import annotations
+
 import json
 import os
 import sys
+from pathlib import Path
 
-import yaml
+# Conservative estimate: 1 byte ≈ 0.3 token (mixed Chinese/English)
+BYTES_PER_TOKEN = 3.3  # 1 / 0.3
 
-
-FLOW_CONTEXT_FILE = ".agent-flow/state/flow-context.yaml"
-
-# 保守估算：1 byte ≈ 0.3 token（混合中英文）
-BYTES_PER_TOKEN = 3.3  # 1/0.3
-
-# 预算阈值
+# Budget thresholds
 THRESHOLD_WARNING = 0.5
 THRESHOLD_CRITICAL = 0.7
 
-# 单次读取上限提醒（超过此大小建议不要在主 Agent 上下文中读取）
+# Large file threshold (bytes) — warn if reading a single file over this
 LARGE_FILE_THRESHOLD_BYTES = 50000  # ~50KB ≈ ~15K tokens
 
+# Default max context budget (tokens)
+DEFAULT_MAX_BUDGET = 200000
 
-def find_flow_context_path() -> str | None:
-    """查找 flow-context.yaml 路径，兼容 .agent-flow/ 和 .dev-workflow/"""
-    for base in [".agent-flow/state", ".dev-workflow/state"]:
-        path = os.path.join(base, "flow-context.yaml")
-        if os.path.isfile(path):
+
+def _find_project_root() -> Path | None:
+    cwd = Path.cwd()
+    for parent in [cwd, *cwd.parents]:
+        if (parent / ".agent-flow").exists() or (parent / ".dev-workflow").exists():
+            return parent
+        if parent == Path.home():
+            break
+    return None
+
+
+def _find_flow_context_path(project_root: Path) -> Path | None:
+    """Find flow-context.yaml path, supporting .agent-flow/ and .dev-workflow/."""
+    for state_dir in [".agent-flow/state", ".dev-workflow/state"]:
+        path = project_root / state_dir / "flow-context.yaml"
+        if path.is_file():
             return path
     return None
 
 
-def get_default_flow_context_path() -> str:
-    """获取默认的 flow-context.yaml 路径（用于新建）"""
-    if os.path.isdir(".dev-workflow"):
-        return ".dev-workflow/state/flow-context.yaml"
-    return FLOW_CONTEXT_FILE
+def _default_flow_context_path(project_root: Path) -> Path:
+    """Get default flow-context.yaml path (for creating new files)."""
+    if (project_root / ".dev-workflow").is_dir():
+        return project_root / ".dev-workflow" / "state" / "flow-context.yaml"
+    return project_root / ".agent-flow" / "state" / "flow-context.yaml"
 
 
-def estimate_tokens_from_size(file_path: str) -> int:
-    """根据文件大小估算 token 数"""
+def _estimate_tokens_from_file_size(file_path: str) -> int:
+    """Estimate tokens from file size (bytes / 3.3)."""
     try:
         size = os.path.getsize(file_path)
         return int(size / BYTES_PER_TOKEN)
@@ -56,38 +71,132 @@ def estimate_tokens_from_size(file_path: str) -> int:
         return 0
 
 
-def read_flow_context() -> dict | None:
-    """读取 flow-context.yaml，兼容 .agent-flow/ 和 .dev-workflow/"""
-    path = find_flow_context_path()
-    if path is None:
-        return None
-    try:
-        with open(path, "r", encoding="utf-8") as f:
-            return yaml.safe_load(f) or {}
-    except Exception:
-        return None
+def _estimate_tokens_from_output(output: str) -> int:
+    """Estimate tokens from tool output length."""
+    if not output:
+        return 500  # Default estimate for search results
+    # Rough: each character ≈ 0.25 tokens for mixed content
+    return max(200, int(len(output) * 0.25))
 
 
-def write_flow_context(context: dict) -> None:
-    """写入 flow-context.yaml（原子写入），兼容 .agent-flow/ 和 .dev-workflow/"""
-    target_path = find_flow_context_path() or get_default_flow_context_path()
-    # 确保目录存在
-    os.makedirs(os.path.dirname(target_path), exist_ok=True)
-    tmp_path = target_path + ".tmp"
+def _read_flow_context(path: Path) -> dict:
+    """Read flow-context.yaml using simple YAML parsing (no dependency)."""
     try:
-        with open(tmp_path, "w", encoding="utf-8") as f:
-            yaml.dump(context, f, default_flow_style=False, sort_keys=False, allow_unicode=True)
-        os.replace(tmp_path, target_path)
-    except Exception:
+        content = path.read_text(encoding="utf-8")
+        return _parse_simple_yaml(content)
+    except OSError:
+        return {}
+
+
+def _parse_simple_yaml(content: str) -> dict:
+    """Minimal YAML parser for flow-context.yaml structure.
+
+    Only handles the subset we need: nested dicts with string/int/float values.
+    """
+    result: dict = {}
+    current_path: list[str] = []
+
+    for line in content.splitlines():
+        stripped = line.rstrip()
+        if not stripped or stripped.startswith("#"):
+            continue
+
+        # Calculate indentation
+        indent = len(line) - len(line.lstrip())
+        # Determine nesting level (2 spaces per level)
+        level = indent // 2
+
+        # Trim current path to match level
+        current_path = current_path[:level]
+
+        stripped_val = stripped.strip()
+
+        # Key-value pair
+        if ":" in stripped_val:
+            key, _, value = stripped_val.partition(":")
+            key = key.strip()
+            value = value.strip()
+
+            # Remove quotes from value
+            if value and value[0] in ('"', "'") and value[-1] == value[0]:
+                value = value[1:-1]
+
+            # Build nested dict
+            target = result
+            for k in current_path:
+                if k not in target or not isinstance(target[k], dict):
+                    target[k] = {}
+                target = target[k]
+
+            # Parse value type
+            if not value:
+                # New nesting level
+                current_path.append(key)
+                target[key] = {}
+            else:
+                # Try to parse as number
+                try:
+                    if "." in value:
+                        target[key] = float(value)
+                    else:
+                        target[key] = int(value)
+                except ValueError:
+                    target[key] = value
+
+    return result
+
+
+def _write_flow_context(path: Path, context: dict) -> None:
+    """Write flow-context.yaml with simple YAML serialization (no dependency)."""
+    # Ensure parent directory exists
+    path.parent.mkdir(parents=True, exist_ok=True)
+
+    try:
+        content = _serialize_simple_yaml(context)
+        tmp_path = path.with_suffix(".yaml.tmp")
+        tmp_path.write_text(content, encoding="utf-8")
+        tmp_path.replace(path)
+    except OSError:
+        # Fallback: try direct write
         try:
-            with open(target_path, "w", encoding="utf-8") as f:
-                yaml.dump(context, f, default_flow_style=False, sort_keys=False, allow_unicode=True)
-        except Exception:
+            path.write_text(_serialize_simple_yaml(context), encoding="utf-8")
+        except OSError:
             pass
 
 
-def compute_status(used: int, max_budget: int) -> str:
-    """计算预算状态"""
+def _serialize_simple_yaml(data: dict, indent: int = 0) -> str:
+    """Simple YAML serializer for dict data."""
+    lines = []
+    prefix = "  " * indent
+    for key, value in data.items():
+        if isinstance(value, dict):
+            lines.append(f"{prefix}{key}:")
+            lines.append(_serialize_simple_yaml(value, indent + 1))
+        elif isinstance(value, str):
+            # Quote strings that might be interpreted as other types
+            if value in ("true", "false", "null", "") or value.replace(".", "", 1).replace("-", "", 1).isdigit():
+                lines.append(f'{prefix}{key}: "{value}"')
+            else:
+                lines.append(f"{prefix}{key}: {value}")
+        elif isinstance(value, bool):
+            lines.append(f"{prefix}{key}: {'true' if value else 'false'}")
+        elif isinstance(value, (int, float)):
+            lines.append(f"{prefix}{key}: {value}")
+        elif isinstance(value, list):
+            lines.append(f"{prefix}{key}:")
+            for item in value:
+                if isinstance(item, dict):
+                    lines.append(f"{prefix}  -")
+                    lines.append(_serialize_simple_yaml(item, indent + 2))
+                else:
+                    lines.append(f"{prefix}  - {item}")
+        else:
+            lines.append(f"{prefix}{key}: {value}")
+    return "\n".join(lines)
+
+
+def _compute_status(used: int, max_budget: int) -> str:
+    """Compute budget status based on usage ratio."""
     if max_budget <= 0:
         return "healthy"
     ratio = used / max_budget
@@ -98,92 +207,113 @@ def compute_status(used: int, max_budget: int) -> str:
     return "healthy"
 
 
-def main():
-    # 全局生效：不再检查 .agent-flow/ 目录
-    # 但只在 flow-context.yaml 存在时追踪预算
-    context = read_flow_context()
-    if context is None:
-        sys.exit(0)
+def _format_system_reminder(level: str, used: int, max_budget: int) -> str:
+    """Format a <system-reminder> block for budget alerts."""
+    pct = used * 100 // max_budget if max_budget > 0 else 0
 
-    # 读取输入
+    if level == "warning":
+        return (
+            "<system-reminder>\n"
+            f"[AgentFlow BUDGET WARNING] Context budget at {pct}% "
+            f"({used // 1000}K / {max_budget // 1000}K tokens)\n\n"
+            "Recommendations:\n"
+            "  1. Prioritize delegating remaining tasks to sub-agents\n"
+            "  2. Avoid reading large files; use L2 summaries only\n"
+            "  3. Prune oldest L1 summaries in flow-context.yaml (keep last 5)\n"
+            "</system-reminder>"
+        )
+    elif level == "critical":
+        return (
+            "<system-reminder>\n"
+            f"[AgentFlow BUDGET CRITICAL] Context budget at {pct}%! "
+            f"({used // 1000}K / {max_budget // 1000}K tokens)\n\n"
+            "MANDATORY actions:\n"
+            "  1. ALL remaining work MUST be delegated to sub-agents\n"
+            "  2. Main agent must only do state management — do NOT read any non-summary files\n"
+            "  3. Immediately prune L1 summary cache, keeping only task IDs and artifact paths\n"
+            "  4. Reference: ~/.agent-flow/skills/agent-orchestration/context-budget/handler.md\n"
+            "</system-reminder>"
+        )
+    return ""
+
+
+def main() -> None:
+    project_root = _find_project_root()
+    if project_root is None:
+        return
+
+    # Find or create flow-context.yaml
+    fc_path = _find_flow_context_path(project_root)
+    if fc_path is None:
+        # Only activate when flow-context.yaml exists
+        return
+
+    # Read hook input
     try:
-        input_data = json.loads(sys.stdin.read())
+        input_data = json.loads(sys.stdin.read() or "{}")
     except Exception:
-        sys.exit(0)
+        return
 
     tool_name = input_data.get("tool_name", "")
     tool_input = input_data.get("tool_input", {})
 
-    # 只追踪读取操作（Read/Bash/Grep/Glob）和写入操作（Write/Edit）
-    # 读取会增加上下文，写入也会（因为 Write 的 content 参数在上下文中）
-    tracked_tools = {"Read", "Grep", "Glob"}
-    if tool_name not in tracked_tools:
-        # 对于 Bash，检查是否是 cat/head/tail/type 等读取命令
-        if tool_name == "Bash":
-            cmd = tool_input.get("command", "")
-            read_cmds = ("cat ", "head ", "tail ", "type ", "less ", "more ")
-            if not any(cmd.startswith(rc) for rc in read_cmds):
-                sys.exit(0)
+    # Only track Read, Grep, Glob tools
+    if tool_name not in ("Read", "Grep", "Glob"):
+        return
+
+    # Estimate tokens consumed
+    estimated_tokens = 0
+    if tool_name == "Read":
+        file_path = tool_input.get("file_path", "")
+        if file_path and os.path.isfile(file_path):
+            estimated_tokens = _estimate_tokens_from_file_size(file_path)
+            # Large file warning
+            file_size = os.path.getsize(file_path)
+            if file_size > LARGE_FILE_THRESHOLD_BYTES:
+                print(
+                    "<system-reminder>\n"
+                    f"[AgentFlow BUDGET WARNING] Reading large file: "
+                    f"{os.path.basename(file_path)} "
+                    f"({file_size // 1024}KB ≈ {estimated_tokens} tokens)\n\n"
+                    "If this is a sub-agent's L3 result, use the deep context "
+                    "analyst pattern instead of reading it directly.\n"
+                    "</system-reminder>"
+                )
         else:
-            sys.exit(0)
-
-    # 获取文件路径
-    file_path = tool_input.get("file_path", "")
-    if not file_path:
-        # Grep/Glob 没有单一文件路径，估算输出大小
-        estimated_tokens = 500  # 搜索结果通常较小
+            estimated_tokens = 800  # Default estimate for Read without known file
     else:
-        # 检查文件是否存在
-        if not os.path.isfile(file_path):
-            sys.exit(0)
+        # Grep/Glob: estimate from output
+        # We don't have the actual output in PostToolUse input, so use a default
+        estimated_tokens = 500
 
-        # 估算 tokens
-        estimated_tokens = estimate_tokens_from_size(file_path)
+    # Read current flow-context
+    context = _read_flow_context(fc_path)
+    if not context:
+        return
 
-        # 大文件警告
-        file_size = os.path.getsize(file_path)
-        if file_size > LARGE_FILE_THRESHOLD_BYTES:
-            print(f"[AgentFlow BUDGET WARNING] 读取大文件: {os.path.basename(file_path)} "
-                  f"({file_size // 1024}KB ≈ {estimated_tokens} tokens)\n"
-                  f"建议: 如果是子 Agent 的 L3 结果，改用深度上下文分析师模式而非直接读取。")
-
-    # 更新预算
+    # Get current budget values
     budget = context.get("context_budget", {})
     current_used = budget.get("used", 0)
-    max_budget = budget.get("max", 200000)
+    max_budget = budget.get("max", DEFAULT_MAX_BUDGET)
     old_status = budget.get("status", "healthy")
 
+    # Update budget
     new_used = current_used + estimated_tokens
-    new_status = compute_status(new_used, max_budget)
+    new_status = _compute_status(new_used, max_budget)
 
-    # 更新 context
     budget["used"] = new_used
     budget["status"] = new_status
     budget["files_read"] = budget.get("files_read", 0) + 1
-
-    # 保留其他字段
     context["context_budget"] = budget
-    write_flow_context(context)
 
-    # 状态变化时注入提醒
+    # Write updated flow-context
+    _write_flow_context(fc_path, context)
+
+    # Output system-reminder on status change
     if new_status != old_status:
-        if new_status == "warning":
-            print(f"[AgentFlow BUDGET] 上下文预算进入 WARNING 区域 "
-                  f"({new_used // 1000}K / {max_budget // 1000}K = {new_used * 100 // max_budget}%)\n"
-                  f"建议:\n"
-                  f"1. 优先派发子 Agent 执行剩余任务\n"
-                  f"2. 避免读取大文件，只读 L2 摘要\n"
-                  f"3. 淘汰 flow-context.yaml 中最早的 L1 摘要（只保留最近 5 条）")
-        elif new_status == "critical":
-            print(f"[AgentFlow BUDGET CRITICAL] 上下文预算超过 70%！"
-                  f"({new_used // 1000}K / {max_budget // 1000}K = {new_used * 100 // max_budget}%)\n"
-                  f"强制措施:\n"
-                  f"1. 所有剩余工作必须派发给子 Agent\n"
-                  f"2. 主 Agent 只做状态管理，不再读取任何非摘要文件\n"
-                  f"3. 立即淘汰 L1 摘要缓存，只保留任务 ID 和 artifact 路径\n"
-                  f"参考: ~/.agent-flow/skills/agent-orchestration/context-budget/handler.md")
-
-    sys.exit(0)
+        reminder = _format_system_reminder(new_status, new_used, max_budget)
+        if reminder:
+            print(reminder)
 
 
 if __name__ == "__main__":

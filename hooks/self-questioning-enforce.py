@@ -1,113 +1,162 @@
 #!/usr/bin/env python3
 """
-AgentFlow Self-Questioning Enforcer — PreToolUse hook
-强制在 REFLECT 前（写入 Soul.md 或 Memory.md 时）完成自我质询。
+AgentFlow Self-Questioning Enforcer — UserPromptSubmit hook
 
-机制：
-  self-questioning 完成 → 创建 .self-questioning-done 标记
-  Agent 尝试 REFLECT（写入 Soul.md）→ 本 hook 检查标记 → 无标记 = 跳过了自查 = 阻断
+After VERIFY phase, enforce self-questioning before REFLECT.
+Checks if .self-questioning-done marker exists. If current_phase.md
+shows phase REFLECT or later but no marker, prints a warning.
 
-铁律 9：VERIFY 后、REFLECT 前必须执行 self-questioning skill。
+Output: <system-reminder> block with warning message.
 """
-import json
+from __future__ import annotations
+
 import os
 import sys
-import time
-
-# 标记文件
-SELF_QUESTIONING_MARKER = ".agent-flow/state/.self-questioning-done"
-COMPLEXITY_FILE = ".agent-flow/state/.complexity-level"
-
-# REFLECT 阶段特征：写入这些文件通常意味着正在执行 REFLECT
-REFLECT_PATH_KEYWORDS = [
-    "memory/main/Soul.md",
-    "memory/main/Memory.md",
-    "souls/main.md",
-]
+from pathlib import Path
 
 
-def is_reflect_operation(file_path: str) -> bool:
-    """判断文件写入是否属于 REFLECT 操作"""
-    normalized = os.path.normpath(file_path)
-    for keyword in REFLECT_PATH_KEYWORDS:
-        if keyword in normalized:
-            return True
-    return False
+MARKER_FILE = ".agent-flow/state/.self-questioning-done"
+DEV_WORKFLOW_MARKER = ".dev-workflow/state/.self-questioning-done"
 
 
-def has_self_questioning_done() -> bool:
-    """检查自我质询是否已完成"""
-    if not os.path.isfile(SELF_QUESTIONING_MARKER):
-        return False
-    try:
-        with open(SELF_QUESTIONING_MARKER, "r", encoding="utf-8") as f:
-            content = f.read().strip()
-            # 标记文件内容格式: timestamp={ISO8601}\ntask={任务描述}
-            return bool(content)
-    except Exception:
-        return False
+def _find_project_root() -> Path | None:
+    cwd = Path.cwd()
+    for parent in [cwd, *cwd.parents]:
+        if (parent / ".agent-flow").exists() or (parent / ".dev-workflow").exists():
+            return parent
+        if parent == Path.home():
+            break
+    return None
 
 
-def get_current_task() -> str:
-    """从 current_phase.md 获取当前任务描述"""
-    phase_file = ".agent-flow/state/current_phase.md"
-    if not os.path.isfile(phase_file):
-        return ""
-    try:
-        with open(phase_file, "r", encoding="utf-8") as f:
-            for line in f:
-                if line.strip().startswith("# 任务:") or line.strip().startswith("# 任务:"):
-                    return line.strip().lstrip("# ").strip()
-    except Exception:
-        pass
+def _read_current_phase(project_root: Path) -> str:
+    """Read current_phase.md content."""
+    for state_dir in [".agent-flow/state", ".dev-workflow/state"]:
+        phase_path = project_root / state_dir / "current_phase.md"
+        if phase_path.is_file():
+            try:
+                return phase_path.read_text(encoding="utf-8")
+            except OSError:
+                pass
     return ""
 
 
-def main():
-    # 只在 agent-flow 项目中生效
-    if not os.path.isdir(".agent-flow") and not os.path.isdir(".dev-workflow"):
-        sys.exit(0)
+def _get_rpi_phase(phase_content: str) -> str | None:
+    """Extract current RPI phase from current_phase.md."""
+    for line in phase_content.splitlines():
+        stripped = line.strip()
+        # Match lines like "- Research: completed" or "- Implement: pending"
+        if stripped.startswith("- ") and ":" in stripped:
+            parts = stripped[2:].split(":", 1)
+            phase_name = parts[0].strip().lower()
+            phase_status = parts[1].strip().lower()
+            if phase_status in ("in_progress", "current"):
+                return phase_name
+    # Fallback: check if any phase is marked as pending (meaning we're at that phase)
+    # Also check for explicit phase markers
+    content_lower = phase_content.lower()
+    if "reflect" in content_lower and "completed" not in content_lower.split("reflect")[0][-50:]:
+        # Check if REFLECT is the current phase in RPI section
+        for line in phase_content.splitlines():
+            stripped = line.strip().lower()
+            if "- reflect" in stripped and ("pending" in stripped or "in_progress" in stripped or "current" in stripped):
+                return "reflect"
+    return None
 
-    # 只在 pre-flight 完成后执行
-    phase_file = ".agent-flow/state/current_phase.md"
-    if not os.path.isfile(phase_file) or os.path.getsize(phase_file) <= 10:
-        sys.exit(0)
 
-    # 读取 hook 输入
+def _is_at_or_past_reflect(phase_content: str) -> bool:
+    """Check if current phase is REFLECT or later."""
+    content_lower = phase_content.lower()
+
+    # Check RPI section for REFLECT being pending/in_progress
+    rpi_section = False
+    for line in phase_content.splitlines():
+        stripped = line.strip()
+        if "RPI" in stripped and "阶段" in stripped:
+            rpi_section = True
+            continue
+        if rpi_section and stripped.startswith("- "):
+            phase_name = stripped[2:].split(":")[0].strip().lower()
+            phase_status = stripped.split(":", 1)[1].strip().lower() if ":" in stripped else ""
+
+            # If REFLECT is pending or in_progress, we're at or past it
+            if phase_name == "reflect" and phase_status in ("pending", "in_progress", "current"):
+                return True
+
+            # If a phase after REFLECT is active (there isn't one normally, but just in case)
+            if phase_name in ("evolve",) and phase_status in ("pending", "in_progress", "current"):
+                return True
+
+    # Fallback: check if VERIFY is completed and REFLECT is mentioned
+    verify_completed = False
+    reflect_pending = False
+    for line in phase_content.splitlines():
+        stripped = line.strip().lower()
+        if "verify" in stripped and "completed" in stripped:
+            verify_completed = True
+        if "reflect" in stripped and ("pending" in stripped or "in_progress" in stripped):
+            reflect_pending = True
+
+    if verify_completed and reflect_pending:
+        return True
+
+    return False
+
+
+def _has_self_questioning_marker(project_root: Path) -> bool:
+    """Check if .self-questioning-done marker exists."""
+    for marker in [MARKER_FILE, DEV_WORKFLOW_MARKER]:
+        marker_path = project_root / marker
+        if marker_path.is_file():
+            try:
+                content = marker_path.read_text(encoding="utf-8").strip()
+                return bool(content)
+            except OSError:
+                pass
+    return False
+
+
+def main() -> None:
     try:
-        input_data = json.loads(sys.stdin.read())
+        # Read stdin (UserPromptSubmit provides prompt info, but we ignore it)
+        _ = sys.stdin.read()
     except Exception:
-        sys.exit(0)
+        pass
 
-    tool_name = input_data.get("tool_name", "")
-    tool_input = input_data.get("tool_input", {})
+    project_root = _find_project_root()
+    if project_root is None:
+        return
 
-    # 只拦截 Write/Edit 到 REFLECT 相关文件
-    if tool_name not in ("Write", "Edit"):
-        sys.exit(0)
+    # Read current_phase.md
+    phase_content = _read_current_phase(project_root)
+    if not phase_content:
+        return
 
-    file_path = tool_input.get("file_path", "")
-    if not is_reflect_operation(file_path):
-        sys.exit(0)
+    # Check if we're at or past REFLECT phase
+    if not _is_at_or_past_reflect(phase_content):
+        return
 
-    # 检查自我质询是否已完成
-    if has_self_questioning_done():
-        sys.exit(0)  # 自我质询已完成，放行 REFLECT
+    # Check if self-questioning marker exists
+    if _has_self_questioning_marker(project_root):
+        return
 
-    # 未完成自我质询 → 阻断 REFLECT
-    task_desc = get_current_task()
+    # No marker found — output warning as <system-reminder>
     print(
-        f"[AgentFlow BLOCKED] 自我质询未完成，禁止执行 REFLECT（写入 Soul.md）！\n"
-        f"当前任务: {task_desc or '未知'}\n\n"
-        f"铁律 9：VERIFY 后、REFLECT 前必须执行 self-questioning skill。\n\n"
-        f"请先执行:\n"
-        f"  1. 读取 ~/.agent-flow/skills/workflow/self-questioning/handler.md\n"
-        f"  2. 执行 10 项结构化自查（流程合规/知识利用/效率分析/知识缺口）\n"
-        f"  3. 将自查报告写入 .agent-flow/state/self-questioning-report.md\n"
-        f"  4. 创建标记: 写入 .agent-flow/state/.self-questioning-done\n"
-        f"  5. 然后再执行 REFLECT 写入 Soul.md"
+        "<system-reminder>\n"
+        "[AgentFlow WARNING] Self-questioning not completed before REFLECT phase!\n\n"
+        "The current task has entered REFLECT phase but the self-questioning check "
+        "has not been performed. Per the AgentFlow iron laws, after VERIFY and "
+        "before REFLECT, you must execute the self-questioning skill.\n\n"
+        "Steps:\n"
+        "  1. Read ~/.agent-flow/skills/workflow/self-questioning/handler.md\n"
+        "  2. Execute the 10-item structured self-check (process compliance, "
+        "knowledge utilization, efficiency analysis, knowledge gaps)\n"
+        "  3. Write the self-questioning report to "
+        ".agent-flow/state/self-questioning-report.md\n"
+        "  4. Create marker: write to .agent-flow/state/.self-questioning-done\n"
+        "  5. Then proceed with REFLECT (writing to Soul.md etc.)\n"
+        "</system-reminder>"
     )
-    sys.exit(2)
 
 
 if __name__ == "__main__":
