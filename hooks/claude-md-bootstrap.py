@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Ensure project bootstrap files exist before deeper workflow checks run.
 
-Also injects Wiki Usage Manual into project CLAUDE.md so every Agent
-knows how to efficiently query the knowledge base.
+Also injects Wiki Usage Manual and Skills Usage Manual into project CLAUDE.md
+so every Agent knows how to efficiently query the knowledge base and find skills.
 """
 
 import os
@@ -62,6 +62,60 @@ Grep "关键词" ~/.agent-flow/wiki/
 """
 
 
+# --- Skills 技能查询手册模板 ---
+SKILLS_USAGE_SECTION = """
+## Skills 技能查询手册
+
+> Agent 查找技能时必须遵循三级查找流程，与 Wiki 查找一致：
+
+### 查找流程（必须按顺序执行）
+
+1. **主题枢纽**（O(1)，首选）：`Read ~/.agent-flow/skills/topics/{keyword}.md`
+   → 一次读取获取该主题的全部技能链接和说明
+   → 如主题枢纽存在，直接按链接读取相关技能，**跳过后续步骤**
+
+2. **标签索引**（O(1)，次选）：`Grep "{keyword}" ~/.agent-flow/skills/TAG-INDEX.md`
+   → 在标签索引表中精确匹配 tag，获取所有相关技能路径
+   → 适合无主题枢纽的关键词查找
+
+3. **全量搜索**（兜底）：`Grep "{keyword}" ~/.agent-flow/skills/`
+   → 仅在主题枢纽和标签索引均无匹配时使用
+
+### 可用主题枢纽
+
+| 主题 | 路径 | 技能数 |
+|------|------|--------|
+| workflow | `skills/topics/workflow.md` | 8个（任务流程控制） |
+| agent-orchestration | `skills/topics/agent-orchestration.md` | 5个（多Agent编排） |
+| knowledge | `skills/topics/knowledge.md` | 5个（知识管理） |
+| development | `skills/topics/development.md` | 7个（代码开发） |
+| git | `skills/topics/git.md` | 2个（Git操作） |
+| integration | `skills/topics/integration.md` | 4个（外部集成） |
+| ai-optimization | `skills/topics/ai-optimization.md` | 5个（AI优化） |
+| documentation | `skills/topics/documentation.md` | 4个（文档处理） |
+| python | `skills/topics/python.md` | 3个（Python模式） |
+| research | `skills/topics/research.md` | 4个（研究搜索） |
+
+### 示例
+
+```
+# 查找工作流技能 → 直接读主题枢纽
+Read ~/.agent-flow/skills/topics/workflow.md
+
+# 查找Jira操作技能 → 先查标签索引
+Grep "jira" ~/.agent-flow/skills/TAG-INDEX.md
+
+# 查找未知技能 → 全量搜索兜底
+Grep "关键词" ~/.agent-flow/skills/
+```
+
+### 项目级 Skills
+
+项目 Skills 路径：`.agent-flow/skills/` 或 `.dev-workflow/skills/`
+查找顺序：先项目 Skills → 再全局 Skills（`~/.agent-flow/skills/`）
+"""
+
+
 def find_project_root() -> Path | None:
     """Find project root by looking for .agent-flow/ or .dev-workflow/ markers."""
     cwd = Path.cwd()
@@ -103,6 +157,34 @@ def ensure_wiki_usage_in_claude_md(project_root: Path) -> None:
         pass
 
 
+def ensure_skills_usage_in_claude_md(project_root: Path) -> None:
+    """Ensure Skills Usage Manual section exists in project CLAUDE.md.
+
+    If the section already exists, skip. Otherwise, append it.
+    """
+    claude_md_path = project_root / "CLAUDE.md"
+
+    # Read existing content
+    if claude_md_path.exists():
+        try:
+            existing = claude_md_path.read_text(encoding="utf-8")
+        except Exception:
+            return
+    else:
+        existing = ""
+
+    # Check if skills usage section already exists
+    if "## Skills 技能查询手册" in existing:
+        return
+
+    # Append skills usage section
+    try:
+        new_content = existing.rstrip() + "\n" + SKILLS_USAGE_SECTION
+        claude_md_path.write_text(new_content, encoding="utf-8")
+    except Exception:
+        pass
+
+
 def main() -> None:
     # Try to use agent_flow package if available
     try:
@@ -121,6 +203,7 @@ def main() -> None:
     project_root = find_project_root()
     if project_root:
         ensure_wiki_usage_in_claude_md(project_root)
+        ensure_skills_usage_in_claude_md(project_root)
 
 
 if __name__ == "__main__":
