@@ -1,164 +1,231 @@
 #!/usr/bin/env python3
 """
 AgentFlow Parallel Execution Enforcer — UserPromptSubmit hook
-在每个用户 prompt 提交时，检查当前阶段是否需要并行执行，
-并提醒 Agent 按照并行策略执行。
 
-检查逻辑：
-1. 读取 current_phase.md 中的当前阶段
-2. 根据 agent-flow 铁律判断该阶段是否需要并行
-3. 如果需要并行但未检测到并行执行标记，注入提醒
+Remind about parallel execution when multiple independent subtasks exist.
 
-并行场景（agent-flow 铁律第7条）：
-| 阶段 | 并行方式 | 原因 |
-|------|---------|------|
-| 需求规格说明书验收 | 双验收：Verifier Agent + Main Agent | 单视角验收容易遗漏 |
-| 写代码 | 多个独立子任务并行 Executor Agent | 无依赖的子任务串行=浪费时间 |
-| 代码审查 | code-reviewer Agent 独立审查 | 开发者自己审查有盲区 |
-| 测试验收 | Verifier Agent + Main Agent 双验收 | 单一验收=低质量 |
+Logic:
+  - Read current_phase.md
+  - If there are multiple pending subtasks with no dependencies between them,
+    print reminder to execute in parallel
+
+Output: <system-reminder> block with parallel execution reminder.
 """
+from __future__ import annotations
+
 import os
+import re
 import sys
+from pathlib import Path
 
 
-PARALLEL_MARKER = ".agent-flow/state/.parallel-execution-done"
-COMPLEXITY_FILE = ".agent-flow/state/.complexity-level"
-
-# 需要并行的关键词（出现在用户 prompt 或 current_phase.md 中）
-VERIFY_KEYWORDS = ["验收", "verify", "VERIFY", "验收通过", "双验收"]
-CODE_REVIEW_KEYWORDS = ["代码审查", "code review", "review", "审查代码"]
-TEST_KEYWORDS = ["测试验收", "测试通过", "test pass", "验收测试"]
-
-# 并行提醒模板
-PARALLEL_REMINDERS = {
-    "verify": """
-[AgentFlow PARALLEL] 验收阶段必须双验收！
-┌──────────────────────────────────────────────────┐
-│ 必须启动 Verifier Agent + Main Agent 独立验收    │
-│                                                  │
-│ Verifier Agent: 启动独立 Agent 审查代码质量      │
-│ Main Agent: 你自己独立审查                       │
-│ 两者都 PASS 才能继续                             │
-│                                                  │
-│ 示例: Agent({description: "Verifier验收", ...})   │
-└──────────────────────────────────────────────────┘""",
-    "code_review": """
-[AgentFlow PARALLEL] 代码修改后必须启动 code-reviewer Agent！
-┌──────────────────────────────────────────────────┐
-│ 开发者自己审查有盲区，必须独立 Agent 审查        │
-│                                                  │
-│ 启动 code-reviewer Agent:                        │
-│ Agent({description: "代码审查",                   │
-│        subagent_type: "general-purpose",          │
-│        prompt: "按 code-review skill 四柱框架     │
-│                 审查以下代码变更..."})             │
-└──────────────────────────────────────────────────┘""",
-    "implement_parallel": """
-[AgentFlow PARALLEL] 多个独立子任务应并行执行！
-┌──────────────────────────────────────────────────┐
-│ 当前有多个独立子任务，应并行启动 Agent:          │
-│                                                  │
-│ 方式: 在一条消息中发送多个 Agent tool call        │
-│ Agent({description: "子任务1", ...})              │
-│ Agent({description: "子任务2", ...})              │
-│                                                  │
-│ 无依赖的子任务串行=浪费时间                      │
-└──────────────────────────────────────────────────┘""",
-}
+def _find_project_root() -> Path | None:
+    cwd = Path.cwd()
+    for parent in [cwd, *cwd.parents]:
+        if (parent / ".agent-flow").exists() or (parent / ".dev-workflow").exists():
+            return parent
+        if parent == Path.home():
+            break
+    return None
 
 
-def get_complexity_level() -> str:
-    if not os.path.isfile(COMPLEXITY_FILE):
-        return "medium"
-    try:
-        with open(COMPLEXITY_FILE, "r", encoding="utf-8") as f:
-            for line in f:
-                line = line.strip()
-                if line.startswith("level="):
-                    level = line.split("=", 1)[1].strip().lower()
-                    if level in ("simple", "medium", "complex"):
-                        return level
-    except Exception:
-        pass
-    return "medium"
-
-
-def read_current_phase() -> str:
-    """读取 current_phase.md 内容"""
-    for path in [".agent-flow/state/current_phase.md", ".dev-workflow/state/current_phase.md"]:
-        if os.path.isfile(path):
+def _read_current_phase(project_root: Path) -> str:
+    """Read current_phase.md content."""
+    for state_dir in [".agent-flow/state", ".dev-workflow/state"]:
+        phase_path = project_root / state_dir / "current_phase.md"
+        if phase_path.is_file():
             try:
-                with open(path, "r", encoding="utf-8") as f:
-                    return f.read()
-            except Exception:
+                return phase_path.read_text(encoding="utf-8")
+            except OSError:
                 pass
     return ""
 
 
-def has_parallel_marker() -> bool:
-    """检查是否已执行并行操作"""
-    return os.path.isfile(PARALLEL_MARKER)
+def _get_complexity_level(project_root: Path) -> str:
+    """Read complexity level from .complexity-level file."""
+    for state_dir in [".agent-flow/state", ".dev-workflow/state"]:
+        path = project_root / state_dir / ".complexity-level"
+        if path.is_file():
+            try:
+                for line in path.read_text(encoding="utf-8").splitlines():
+                    stripped = line.strip()
+                    if stripped.startswith("level="):
+                        level = stripped.split("=", 1)[1].strip().lower()
+                        if level in ("simple", "medium", "complex"):
+                            return level
+            except OSError:
+                pass
+    return "medium"
 
 
-def detect_parallel_needs(phase_content: str, complexity: str) -> list:
-    """检测当前阶段是否需要并行执行"""
-    needs = []
-    content_lower = phase_content.lower()
+def _extract_subtasks(phase_content: str) -> list[dict]:
+    """Extract subtasks from current_phase.md implementation plan.
 
-    # 1. 验收阶段 → 双验收
-    if any(kw in content_lower for kw in ["验收", "verify", "VERIFY"]):
-        needs.append("verify")
+    Returns list of dicts with keys: id, description, status, dependencies.
+    """
+    subtasks = []
+    in_plan = False
 
-    # 2. 代码修改后 → code-review
-    if any(kw in content_lower for kw in ["implement", "实现", "开发", "编码"]):
-        needs.append("code_review")
+    for line in phase_content.splitlines():
+        stripped = line.strip()
 
-    # 3. 多个子任务 → 并行执行
-    if "T1" in phase_content and "T2" in phase_content:
-        # 检查是否有独立的子任务
-        if "独立" in phase_content or "并行" in phase_content or complexity == "complex":
-            needs.append("implement_parallel")
+        # Detect implementation plan section
+        if "实施计划" in stripped or "Implementation Plan" in stripped:
+            in_plan = True
+            continue
 
-    return needs
+        # Leave implementation plan section
+        if in_plan and stripped.startswith("## ") and "实施计划" not in stripped:
+            in_plan = False
+            continue
+
+        if not in_plan:
+            continue
+
+        # Match subtask lines like "- T1: Description" or "- T1: Description（dependency info）"
+        match = re.match(r"^-\s+(T\d+):\s+(.+)$", stripped)
+        if match:
+            task_id = match.group(1)
+            description = match.group(2)
+
+            # Check for status markers
+            status = "pending"
+            if "✅" in description or "completed" in description.lower():
+                status = "completed"
+            elif "🔄" in description or "in_progress" in description.lower():
+                status = "in_progress"
+
+            # Check for dependency info in parentheses
+            dependencies = []
+            dep_match = re.search(r"[（(]([^）)]+)[）)]", description)
+            if dep_match:
+                dep_text = dep_match.group(1)
+                # Look for dependency patterns like "T1→T2" or "depends on T1"
+                dep_ids = re.findall(r"T\d+", dep_text)
+                dependencies = dep_ids
+
+            subtasks.append({
+                "id": task_id,
+                "description": description,
+                "status": status,
+                "dependencies": dependencies,
+            })
+
+    return subtasks
 
 
-def main():
-    # 只在 agent-flow 项目中生效
-    if not os.path.isdir(".agent-flow") and not os.path.isdir(".dev-workflow"):
-        sys.exit(0)
+def _parse_dependency_line(phase_content: str) -> str | None:
+    """Parse the dependency line from current_phase.md (e.g., '依赖: T1→T2→T3')."""
+    for line in phase_content.splitlines():
+        stripped = line.strip()
+        if stripped.startswith("依赖:") or stripped.startswith("依赖："):
+            return stripped.split(":", 1)[1].strip() if ":" in stripped else stripped.split("：", 1)[1].strip()
+    return None
 
-    # 只在 pre-flight 完成后执行
-    phase_content = read_current_phase()
+
+def _find_parallelizable_groups(subtasks: list[dict], dep_line: str | None) -> list[list[str]]:
+    """Find groups of subtasks that can be executed in parallel.
+
+    Returns a list of groups, where each group is a list of task IDs
+    that have no dependencies on each other.
+    """
+    pending = [t for t in subtasks if t["status"] != "completed"]
+    if len(pending) < 2:
+        return []
+
+    # Parse dependency graph from dep_line (e.g., "T1→T2→T3" or "T1→[T2,T3]→T4")
+    if dep_line:
+        # Sequential pattern: T1→T2→T3 — no parallelism
+        if "→" in dep_line and "[" not in dep_line:
+            # Pure sequential — check if there are at least 2 consecutive pending tasks
+            # that could potentially be parallelized
+            return []
+
+        # Parallel pattern: T1→[T2,T3]→T4 — T2 and T3 are parallelizable
+        groups = []
+        import re as re2
+        bracket_groups = re2.findall(r"\[([^\]]+)\]", dep_line)
+        for bg in bracket_groups:
+            task_ids = re2.findall(r"T\d+", bg)
+            if len(task_ids) >= 2:
+                # Filter to only pending tasks
+                pending_ids = [t["id"] for t in pending]
+                parallel_ids = [tid for tid in task_ids if tid in pending_ids]
+                if len(parallel_ids) >= 2:
+                    groups.append(parallel_ids)
+        return groups
+
+    # No dependency line — check individual task dependencies
+    # Tasks with no dependencies on each other can be parallelized
+    pending_ids = {t["id"] for t in pending}
+    no_dep_tasks = [t for t in pending if not t["dependencies"] or not any(d in pending_ids for d in t["dependencies"])]
+    if len(no_dep_tasks) >= 2:
+        return [[t["id"] for t in no_dep_tasks]]
+
+    return []
+
+
+def main() -> None:
+    try:
+        # Read stdin (UserPromptSubmit provides prompt info, but we ignore it)
+        _ = sys.stdin.read()
+    except Exception:
+        pass
+
+    project_root = _find_project_root()
+    if project_root is None:
+        return
+
+    # Read current_phase.md
+    phase_content = _read_current_phase(project_root)
     if not phase_content:
-        sys.exit(0)
+        return
 
-    complexity = get_complexity_level()
-
-    # Simple 任务不需要并行
+    # Simple tasks don't need parallel enforcement
+    complexity = _get_complexity_level(project_root)
     if complexity == "simple":
-        sys.exit(0)
+        return
 
-    # 已有并行标记，跳过
-    if has_parallel_marker():
-        sys.exit(0)
+    # Extract subtasks
+    subtasks = _extract_subtasks(phase_content)
+    if len(subtasks) < 2:
+        return
 
-    # 检测并行需求
-    needs = detect_parallel_needs(phase_content, complexity)
+    # Parse dependency line
+    dep_line = _parse_dependency_line(phase_content)
 
-    if not needs:
-        sys.exit(0)
+    # Find parallelizable groups
+    parallel_groups = _find_parallelizable_groups(subtasks, dep_line)
+    if not parallel_groups:
+        return
 
-    # 输出提醒
-    reminders = []
-    for need in needs:
-        reminder = PARALLEL_REMINDERS.get(need, "")
-        if reminder:
-            reminders.append(reminder)
+    # Build reminder message
+    group_descriptions = []
+    for group in parallel_groups:
+        group_descriptions.append(", ".join(group))
 
-    if reminders:
-        print("\n\n".join(reminders))
+    groups_text = "; ".join(group_descriptions)
 
-    sys.exit(0)
+    # Count pending tasks
+    pending_count = sum(1 for t in subtasks if t["status"] == "pending")
+    completed_count = sum(1 for t in subtasks if t["status"] == "completed")
+
+    print(
+        "<system-reminder>\n"
+        f"[AgentFlow PARALLEL] {pending_count} pending subtasks detected with "
+        f"parallelizable groups: {groups_text}\n\n"
+        "Independent subtasks should be executed in parallel to save time.\n\n"
+        "How to execute in parallel:\n"
+        "  - Send multiple Agent tool calls in a single message\n"
+        "  - Each agent handles one independent subtask\n"
+        "  - Example:\n"
+        "    Agent({description: \"executor-1: Task1\", ...})\n"
+        "    Agent({description: \"executor-2: Task2\", ...})\n\n"
+        f"Task progress: {completed_count}/{len(subtasks)} completed, "
+        f"{pending_count} pending\n"
+        f"Complexity: {complexity.upper()}\n"
+        "</system-reminder>"
+    )
 
 
 if __name__ == "__main__":

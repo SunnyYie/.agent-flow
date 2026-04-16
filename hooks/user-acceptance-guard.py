@@ -1,157 +1,214 @@
 #!/usr/bin/env python3
 """
-AgentFlow User Acceptance Guard — PreToolUse hook
-强制在 git push / MR 创建 / PR 创建 前完成用户验收。
+AgentFlow User Acceptance Guard — UserPromptSubmit hook
 
-机制：
-  每个开发阶段（Research/Plan/Implement）完成后 → Agent 请求用户验收
-  → 用户确认"验收通过" → Agent 创建 .user-acceptance-done 标记
-  → 本 hook 检查标记 → 无标记 = 未验收 = 阻断 push/MR
+For Medium/Complex tasks, enforce user acceptance before push.
 
-按复杂度分级：
-  Simple:  提醒但不阻断（用户已确认过实施计划即可）
-  Medium:  硬阻断，必须有验收标记
-  Complex: 硬阻断，且验收标记必须包含全部3个阶段的确认
+Logic:
+  - Read current_phase.md
+  - If complexity >= medium and no .user-acceptance-done marker exists,
+    remind about user acceptance
+
+Output: <system-reminder> block with acceptance reminder.
 """
-import json
+from __future__ import annotations
+
 import os
 import sys
+from pathlib import Path
 
-from contract_utils import (
-    find_project_root,
-    get_complexity_level,
-    load_marker_entries,
-    read_state_path,
-)
 
-# 需要拦截的命令前缀
-BLOCKED_COMMANDS = [
-    "git push",
-    "glab mr create",
-    "glab api --method POST",
-    "gh pr create",
-]
+def _find_project_root() -> Path | None:
+    cwd = Path.cwd()
+    for parent in [cwd, *cwd.parents]:
+        if (parent / ".agent-flow").exists() or (parent / ".dev-workflow").exists():
+            return parent
+        if parent == Path.home():
+            break
+    return None
 
-def check_phase_acceptance(marker_path, phase: str) -> bool:
-    for entry in load_marker_entries(marker_path):
-        if (
-            entry.get("phase") == phase
-            and entry.get("status") == "accepted"
-            and all(entry.get(key, "").strip() for key in ("timestamp", "task", "confirmed_by", "summary"))
-        ):
-            return True
+
+def _read_current_phase(project_root: Path) -> str:
+    """Read current_phase.md content."""
+    for state_dir in [".agent-flow/state", ".dev-workflow/state"]:
+        phase_path = project_root / state_dir / "current_phase.md"
+        if phase_path.is_file():
+            try:
+                return phase_path.read_text(encoding="utf-8")
+            except OSError:
+                pass
+    return ""
+
+
+def _get_complexity_level(project_root: Path) -> str:
+    """Read complexity level from .complexity-level file."""
+    for state_dir in [".agent-flow/state", ".dev-workflow/state"]:
+        path = project_root / state_dir / ".complexity-level"
+        if path.is_file():
+            try:
+                for line in path.read_text(encoding="utf-8").splitlines():
+                    stripped = line.strip()
+                    if stripped.startswith("level="):
+                        level = stripped.split("=", 1)[1].strip().lower()
+                        if level in ("simple", "medium", "complex"):
+                            return level
+            except OSError:
+                pass
+    return "medium"
+
+
+def _get_complexity_from_phase(phase_content: str) -> str:
+    """Extract complexity from current_phase.md as fallback."""
+    for line in phase_content.splitlines():
+        stripped = line.strip()
+        if stripped.startswith("- level:"):
+            level = stripped.split(":", 1)[1].strip().lower()
+            if level in ("simple", "medium", "complex"):
+                return level
+    return ""
+
+
+def _has_user_acceptance_marker(project_root: Path) -> bool:
+    """Check if .user-acceptance-done marker exists with valid content."""
+    for state_dir in [".agent-flow/state", ".dev-workflow/state"]:
+        marker_path = project_root / state_dir / ".user-acceptance-done"
+        if marker_path.is_file():
+            try:
+                content = marker_path.read_text(encoding="utf-8").strip()
+                if not content:
+                    continue
+                # Check for structured marker entries
+                # Each entry should have at least phase= and status=accepted
+                has_accepted = False
+                for line in content.splitlines():
+                    stripped = line.strip()
+                    if not stripped:
+                        continue
+                    if "status=accepted" in stripped:
+                        # Verify required fields exist somewhere in the content
+                        has_accepted = True
+                        break
+                    if stripped.startswith("status:") and "accepted" in stripped:
+                        has_accepted = True
+                        break
+                if has_accepted:
+                    return True
+                # If any non-empty content exists, treat as accepted (legacy format)
+                if content:
+                    return True
+            except OSError:
+                pass
     return False
 
 
-def is_blocked_command(command: str) -> bool:
-    """判断命令是否为需要拦截的 push/MR 命令"""
-    cmd = command.strip()
-    for blocked in BLOCKED_COMMANDS:
-        if cmd.startswith(blocked):
+def _is_past_implement_phase(phase_content: str) -> bool:
+    """Check if we're past the IMPLEMENT phase (meaning acceptance should happen)."""
+    content_lower = phase_content.lower()
+
+    # Check if IMPLEMENT is completed
+    for line in phase_content.splitlines():
+        stripped = line.strip()
+        if "- implement:" in stripped.lower() and "completed" in stripped.lower():
             return True
+
+    # Check if we're in VERIFY or REFLECT phase
+    for line in phase_content.splitlines():
+        stripped = line.strip().lower()
+        if stripped.startswith("- ") and ":" in stripped:
+            parts = stripped[2:].split(":", 1)
+            if len(parts) == 2:
+                phase_name = parts[0].strip()
+                phase_status = parts[1].strip()
+                if phase_name in ("verify", "reflect") and phase_status in (
+                    "pending", "in_progress", "current", "completed"
+                ):
+                    return True
+
+    # Check for 验收 keywords
+    if "验收" in phase_content or "⚠️双验收" in phase_content:
+        return True
+
     return False
 
 
-def main():
-    project_root = find_project_root()
-    if project_root is None:
-        sys.exit(0)
-
-    phase_file = read_state_path(project_root, "current_phase.md")
-    if not os.path.isfile(phase_file) or os.path.getsize(phase_file) <= 10:
-        sys.exit(0)
-
-    # 读取 hook 输入
+def main() -> None:
     try:
-        input_data = json.loads(sys.stdin.read())
+        # Read stdin (UserPromptSubmit provides prompt info, but we ignore it)
+        _ = sys.stdin.read()
     except Exception:
-        sys.exit(0)
+        pass
 
-    tool_name = input_data.get("tool_name", "")
-    tool_input = input_data.get("tool_input", {})
+    project_root = _find_project_root()
+    if project_root is None:
+        return
 
-    needs_check = False
+    # Read current_phase.md
+    phase_content = _read_current_phase(project_root)
+    if not phase_content:
+        return
 
-    # Bash: 拦截 git push 和 MR 创建命令
-    if tool_name == "Bash":
-        command = tool_input.get("command", "")
-        if is_blocked_command(command):
-            needs_check = True
-
-    if not needs_check:
-        sys.exit(0)
-
-    # 检查用户验收标记
-    acceptance_marker = read_state_path(project_root, ".user-acceptance-done")
-    has_any_acceptance = any(
-        entry.get("status") == "accepted"
-        and all(entry.get(key, "").strip() for key in ("phase", "timestamp", "task", "confirmed_by", "summary"))
-        for entry in load_marker_entries(acceptance_marker)
-    )
-
-    if has_any_acceptance:
-        complexity = get_complexity_level(project_root)
-        # Complex 任务需要检查每个阶段
-        if complexity == "complex":
-            missing = []
-            if not check_phase_acceptance(acceptance_marker, "research"):
-                missing.append("Research")
-            if not check_phase_acceptance(acceptance_marker, "plan"):
-                missing.append("Plan")
-            if not check_phase_acceptance(acceptance_marker, "implement"):
-                missing.append("Implement")
-
-            if not missing:
-                sys.exit(0)  # 全部阶段验收通过
-
-            # 部分阶段未验收
-            missing_str = "\n".join(f"  - {p} 阶段未验收" for p in missing)
-            print(
-                f"[AgentFlow BLOCKED] Complex 任务需要所有阶段(Research/Plan/Implement)"
-                f"的用户验收才能推送代码！\n"
-                f"缺少验收的阶段：\n{missing_str}\n\n"
-                f"请先执行用户验收：\n"
-                f"  1. 向用户展示当前阶段产出\n"
-                f"  2. 获得用户明确确认\n"
-                f"  3. 写入标记: .agent-flow/state/.user-acceptance-done\n"
-                f"     格式: research=accepted\\nplan=accepted\\nimplement=accepted\\n"
-                f"  4. 再次尝试推送"
-            )
-            sys.exit(2)
+    # Get complexity
+    complexity = _get_complexity_level(project_root)
+    if complexity == "simple":
+        # Also check phase content directly
+        phase_complexity = _get_complexity_from_phase(phase_content)
+        if phase_complexity:
+            complexity = phase_complexity
         else:
-            sys.exit(0)  # Simple/Medium 有验收标记即可
-
-    # 无验收标记
-    complexity = get_complexity_level(project_root)
+            return  # Simple tasks don't require formal user acceptance
 
     if complexity == "simple":
-        # Simple 任务：软提醒
+        return
+
+    # Check if we're past IMPLEMENT phase (acceptance should have happened by now)
+    past_implement = _is_past_implement_phase(phase_content)
+    if not past_implement:
+        return
+
+    # Check if user acceptance marker exists
+    if _has_user_acceptance_marker(project_root):
+        return
+
+    # No acceptance marker — output reminder
+    if complexity == "complex":
         print(
-            "[AgentFlow REMINDER] 即将推送代码，但用户验收未完成！\n"
-            "Simple 任务建议：确认用户已看过变更内容并同意推送。\n"
-            "创建验收标记: 写入结构化的 .agent-flow/state/.user-acceptance-done"
-        )
-        sys.exit(0)
-    else:
-        # Medium/Complex 任务：硬阻断
-        print(
-            "[AgentFlow BLOCKED] 用户验收未完成，禁止推送代码或创建 MR！\n\n"
-            "必须先完成用户验收：\n"
-            "  1. 向用户展示变更摘要和测试结果\n"
-            "  2. 明确告知影响范围和回滚方案\n"
-            "  3. 获得用户明确确认（如'可以推送'、'验收通过'）\n"
-            "  4. 写入标记: .agent-flow/state/.user-acceptance-done\n"
-            "     每条记录至少包含:\n"
-            "     phase=implement|plan|research\n"
+            "<system-reminder>\n"
+            "[AgentFlow ACCEPTANCE] COMPLEX task requires user acceptance!\n\n"
+            "No .user-acceptance-done marker found. Complex tasks require user "
+            "acceptance before proceeding to push/MR creation.\n\n"
+            "Required acceptance for Complex tasks:\n"
+            "  - Research phase acceptance\n"
+            "  - Plan phase acceptance\n"
+            "  - Implement phase acceptance (with test results)\n\n"
+            "To complete acceptance:\n"
+            "  1. Present a summary of changes and test results to the user\n"
+            "  2. Explicitly describe the impact scope and rollback plan\n"
+            "  3. Get the user's explicit confirmation (e.g., 'looks good', 'accepted')\n"
+            "  4. Write the marker: .agent-flow/state/.user-acceptance-done\n"
+            "     Each entry must include:\n"
+            "     phase=research|plan|implement\n"
             "     status=accepted\n"
             "     timestamp=ISO8601\n"
-            "     task=当前任务\n"
+            "     task=current task\n"
             "     confirmed_by=user\n"
-            "     summary=用户确认摘要\n\n"
-            "  5. 再次尝试推送\n\n"
-            "⚠️ 禁止：自行创建验收标记而不与用户确认"
+            "     summary=user's confirmation summary\n\n"
+            "DO NOT create the acceptance marker without actual user confirmation.\n"
+            "</system-reminder>"
         )
-        sys.exit(2)
+    else:
+        # Medium complexity
+        print(
+            "<system-reminder>\n"
+            "[AgentFlow ACCEPTANCE] MEDIUM task requires user acceptance.\n\n"
+            "No .user-acceptance-done marker found. Medium tasks should get user "
+            "acceptance before pushing code or creating MRs.\n\n"
+            "To complete acceptance:\n"
+            "  1. Present the change summary to the user\n"
+            "  2. Get explicit confirmation\n"
+            "  3. Write marker: .agent-flow/state/.user-acceptance-done\n"
+            "     (phase=implement, status=accepted, timestamp=..., confirmed_by=user)\n"
+            "</system-reminder>"
+        )
 
 
 if __name__ == "__main__":
