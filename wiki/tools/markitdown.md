@@ -81,7 +81,7 @@ result = md.convert("diagram.png")
 
 ## 与 AgentFlow 的集成
 
-- **Skill**：`.agent-flow/skills/markitdown/handler.md` — 操作 SOP
+- **Skill**：`.agent-flow/skills/documentation/markitdown/handler.md` — 操作 SOP
 - **白名单**：`need_confirmation` 级别（pip 安装包名确认）
 - **触发词**：文件转 markdown、pdf 转文本、文档解析、内容提取
 
@@ -93,4 +93,4 @@ result = md.convert("diagram.png")
 - 推荐虚拟环境安装避免依赖冲突
 
 ## 相关条目
-- [[doc-conversion]](../../skills/markitdown/handler.md) — 文档转换 Skill
+- [[doc-conversion]](../../skills/documentation/markitdown/handler.md) — 文档转换 Skill

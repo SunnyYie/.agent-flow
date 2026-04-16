@@ -170,7 +170,7 @@ def main():
 [AgentFlow Protocol — MANDATORY] PRE-FLIGHT CHECK 未完成，你必须先完成以下步骤才能执行任何任务：
 
 【禁止跳过】按顺序执行：
-1. 读取 ~/.agent-flow/skills/pre-flight-check/handler.md，按其 5 步 Procedure 执行
+1. 读取 ~/.agent-flow/skills/workflow/pre-flight-check/handler.md，按其 5 步 Procedure 执行
 2. Step 1: 检查项目配置（.agent-flow/config.yaml）
 3. Step 2: 知识检索（5 次搜索：项目技能→全局技能→Soul→项目Wiki→全局Wiki）
 4. Step 3: 将分析写入 .agent-flow/memory/main/Memory.md
@@ -190,7 +190,7 @@ def main():
 
 【禁止跳过】按顺序执行：
 1. 读取 .dev-workflow/Agent.md（如存在），按其 boot protocol 执行
-2. 读取 ~/.agent-flow/skills/pre-flight-check/handler.md，按其 5 步 Procedure 执行
+2. 读取 ~/.agent-flow/skills/workflow/pre-flight-check/handler.md，按其 5 步 Procedure 执行
 3. Step 1: 检查项目配置（.dev-workflow/ + .agent-flow/config.yaml）
 4. Step 2: 知识检索（5 次搜索：项目技能→全局技能→Soul→项目Wiki→全局Wiki）
 5. Step 3: 将分析写入 .agent-flow/memory/main/Memory.md

@@ -101,7 +101,7 @@ def main():
         f"当前任务: {task_desc or '未知'}\n\n"
         f"铁律 9：VERIFY 后、REFLECT 前必须执行 self-questioning skill。\n\n"
         f"请先执行:\n"
-        f"  1. 读取 ~/.agent-flow/skills/self-questioning/handler.md\n"
+        f"  1. 读取 ~/.agent-flow/skills/workflow/self-questioning/handler.md\n"
         f"  2. 执行 10 项结构化自查（流程合规/知识利用/效率分析/知识缺口）\n"
         f"  3. 将自查报告写入 .agent-flow/state/self-questioning-report.md\n"
         f"  4. 创建标记: 写入 .agent-flow/state/.self-questioning-done\n"

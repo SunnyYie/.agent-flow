@@ -104,6 +104,9 @@ updated: 2026-04-15
 | markdown | tools/markitdown |
 | memory | concepts/memory-systems |
 | microsoft | tools/markitdown |
+| mongodb | pitfalls/tools/mongosh-wire-version, tools/mongodb-query |
+| mongosh | pitfalls/tools/mongosh-wire-version |
+| pymongo | tools/mongodb-query |
 | mocha | pitfalls/react-native/jest-babel-compatibility |
 | monorepo | tools/monorepo-claudemd |
 | multi-agent | concepts/agent-roles, patterns/workflow/orchestrator-workers, pitfalls/workflow/parallel-execution-not-enforced, patterns/workflow/three-agent-model, pitfalls/workflow/multi-agent-rate-limit-recovery |

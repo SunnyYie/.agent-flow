@@ -198,7 +198,7 @@ Agent({
 | PARTIAL | 补充摘要缺失项 |
 | FAIL | 重新派发 executor 修复，或由主 Agent 直接修复摘要 |
 
-详见 `~/.agent-flow/skills/summary-verifier/handler.md`
+详见 `~/.agent-flow/skills/knowledge/summary-verifier/handler.md`
 
 ### Step 7: 更新流程状态
 

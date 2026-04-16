@@ -23,7 +23,12 @@ created: 2026-04-14
 
 按以下顺序查找已有方案：
 
-1. **Skills**: `Grep` 搜索 `~/.agent-flow/skills/` 和 `.agent-flow/skills/`
+1. **Skills 主题查找**（快速路径，三级查找）：
+   a. **主题枢纽**（O(1)）：`Read` 主题枢纽 `~/.agent-flow/skills/topics/{keyword}.md`
+      → 存在则直接获取该主题所有相关技能链接
+   b. **标签索引**（O(1)）：`Grep` 标签索引 `~/.agent-flow/skills/TAG-INDEX.md`
+      → 按标签精确匹配技能路径
+   c. **全量搜索**（兜底）：`Grep` 搜索 `~/.agent-flow/skills/` 和 `.agent-flow/skills/`
 2. **Soul**: `Grep` 搜索 `.agent-flow/memory/main/Soul.md`
 3. **Wiki 主题查找**（快速路径，三级查找）：
    a. **主题枢纽**（O(1)）：`Read` 主题枢纽 `~/.agent-flow/wiki/topics/{keyword}.md`

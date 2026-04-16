@@ -13,8 +13,8 @@
 
 ## Required Reading — 前置阅读
 
-- `~/.agent-flow/skills/main-agent-dispatch/handler.md` — 主 Agent 派发协议（上下文隔离核心）
-- `~/.agent-flow/skills/prompt-caching-optimization/handler.md` — 提示词缓存优化（编排者可预热缓存）
+- `~/.agent-flow/skills/agent-orchestration/main-agent-dispatch/handler.md` — 主 Agent 派发协议（上下文隔离核心）
+- `~/.agent-flow/skills/ai-optimization/prompt-caching-optimization/handler.md` — 提示词缓存优化（编排者可预热缓存）
 - `.agent-flow/wiki/patterns/orchestrator-workers.md` — 模式详解
 
 ## Procedure — 执行步骤
@@ -111,7 +111,7 @@ Agent({
 })
 ```
 
-详见 `~/.agent-flow/skills/main-agent-dispatch/handler.md`。
+详见 `~/.agent-flow/skills/agent-orchestration/main-agent-dispatch/handler.md`。
 
 **方式二：Python FlexibleOrchestrator（简单任务，无需上下文隔离）**
 

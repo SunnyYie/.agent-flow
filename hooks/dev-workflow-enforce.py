@@ -415,7 +415,7 @@ def main():
                             f"  2. Grep '{{子任务关键词}}' ~/.agent-flow/skills/\n"
                             f"  3. Grep '{{子任务关键词}}' .agent-flow/memory/main/Soul.md\n"
                             f"  4. Grep '{{子任务关键词}}' ~/.agent-flow/wiki/ + .agent-flow/wiki/\n\n"
-                            f"搜索完成后可继续编码。参考: ~/.agent-flow/skills/subtask-guard/handler.md"
+                            f"搜索完成后可继续编码。参考: ~/.agent-flow/skills/workflow/subtask-guard/handler.md"
                         )
                         sys.exit(2)
 

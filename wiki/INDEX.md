@@ -59,6 +59,7 @@
   - [venv-path-resolution](pitfalls/environment/venv-path-resolution.md) — .venv路径解析错误
 - [tools](pitfalls/tools/) — 工具踩坑
   - [codex-provider-auth-mismatch](pitfalls/tools/codex-provider-auth-mismatch.md) — Codex登录后config.toml与auth.json不匹配
+  - [mongosh-wire-version](pitfalls/tools/mongosh-wire-version.md) — mongosh与旧版MongoDB不兼容（wire version报错）
 - [agent-flow](pitfalls/agent-flow/) — agent-flow CLI踩坑
   - [agent-flow-ship-rebase](pitfalls/agent-flow/agent-flow-ship-rebase.md) — ship自动rebase导致历史分叉
   - [add-feature-branch-conflict](pitfalls/agent-flow/add-feature-branch-conflict.md) — add-feature与已有分支冲突
@@ -80,6 +81,7 @@
 - [advanced-tool-use](tools/advanced-tool-use.md) — 高级工具用法（PTC/Dynamic Filtering/Tool Search）
 - [monorepo-claudemd](tools/monorepo-claudemd.md) — Monorepo CLAUDE.md 加载机制（祖先/后代/兄弟）
 - [mai-jira-cli](tools/mai-jira-cli.md) — 私有部署 Jira Server CLI（飞书SSO认证/配置/API调用注意事项）
+- [mongodb-query](tools/mongodb-query.md) — MongoDB查询工具参考（pymongo替代mongosh/BSON序列化/常用查询模式）
 
 ## Concepts（核心概念）
 

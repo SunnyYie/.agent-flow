@@ -181,7 +181,7 @@ def main():
                   f"1. 所有剩余工作必须派发给子 Agent\n"
                   f"2. 主 Agent 只做状态管理，不再读取任何非摘要文件\n"
                   f"3. 立即淘汰 L1 摘要缓存，只保留任务 ID 和 artifact 路径\n"
-                  f"参考: ~/.agent-flow/skills/context-budget/handler.md")
+                  f"参考: ~/.agent-flow/skills/agent-orchestration/context-budget/handler.md")
 
     sys.exit(0)
 

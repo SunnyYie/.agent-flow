@@ -85,13 +85,15 @@ updated: 2026-04-14
 
 将任务描述分词，提取关键词，按以下顺序搜索。
 
-**全量搜索（5步）**：
+**全量搜索（5步，Skills 使用三级查找优化）**：
 ```text
-搜索1: Grep "{关键词}" .agent-flow/skills/         → 项目技能
-搜索2: Grep "{关键词}" ~/.agent-flow/skills/        → 全局技能
-搜索3: Grep "{关键词}" .agent-flow/memory/main/Soul.md  → 项目经验
-搜索4: Grep "{关键词}" .agent-flow/wiki/            → 项目知识
-搜索5: Grep "{关键词}" ~/.agent-flow/wiki/           → 全局知识
+搜索1: Read ~/.agent-flow/skills/topics/{关键词}.md    → Skills 主题枢纽（O(1)）
+       或 Grep "{关键词}" ~/.agent-flow/skills/TAG-INDEX.md → Skills 标签索引（O(1)）
+       兜底: Grep "{关键词}" ~/.agent-flow/skills/   → Skills 全量搜索
+搜索2: Grep "{关键词}" .agent-flow/skills/             → 项目技能（递归）
+搜索3: Grep "{关键词}" .agent-flow/memory/main/Soul.md → 项目经验
+搜索4: Grep "{关键词}" .agent-flow/wiki/               → 项目知识（优先主题枢纽）
+搜索5: Grep "{关键词}" ~/.agent-flow/wiki/              → 全局知识（优先主题枢纽）
 ```
 
 **按复杂度调整搜索深度**：

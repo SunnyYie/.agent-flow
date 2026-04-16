@@ -191,7 +191,7 @@ def main():
 
 4. 子 Agent 完成后: 只读 L2 摘要 → 更新 flow-context.yaml
 5. Medium/Complex 任务: 派发 Verifier Agent 抽检验证摘要
-   参考: ~/.agent-flow/skills/summary-verifier/handler.md
+   参考: ~/.agent-flow/skills/knowledge/summary-verifier/handler.md
 
 当前活跃子 Agent: {active_agents}/3""")
         # 不阻断，仅提醒
@@ -201,7 +201,7 @@ def main():
     if complexity == "medium" and active_agents == 0:
         print(f"""[AgentFlow DISPATCH REMINDER] 当前为 Medium 复杂度任务。
 建议派发子 Agent 执行，避免主 Agent 上下文溢出。
-参考: ~/.agent-flow/skills/main-agent-dispatch/handler.md""")
+参考: ~/.agent-flow/skills/agent-orchestration/main-agent-dispatch/handler.md""")
 
     sys.exit(0)
 
