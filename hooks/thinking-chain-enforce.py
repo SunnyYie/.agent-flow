@@ -112,9 +112,9 @@ READONLY_BASH_PREFIXES = (
     "git fetch",
     "lark-cli",
     "agent-flow",
-    "python3 -c",
-    "python -c",
-    "node -e",
+    "python3",
+    "python",
+    "node",
     ".venv/bin/python",
     # 测试命令（只读，不修改代码）
     "pytest",
@@ -133,6 +133,7 @@ READONLY_BASH_PREFIXES = (
     "zip",
     "unzip",
     "xxd",
+    "curl"
 )
 
 # 思维链提示信息
