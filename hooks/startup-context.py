@@ -33,10 +33,21 @@ def main() -> None:
         return
 
     try:
-        from agent_flow.core.startup_context import build_startup_context, render_startup_context_reminder
+        from agent_flow.core.lifecycle import fire_turn_start
+        from agent_flow.core.runtime_context import collect_runtime_context, render_runtime_context
 
-        context = build_startup_context(project_root, prompt)
-        reminder = render_startup_context_reminder(project_root, context)
+        fire_turn_start(
+            project_root,
+            phase=str(payload.get("hook_event_name", "") or ""),
+            metadata={"source": "claude-hook"},
+        )
+        context = collect_runtime_context(
+            project_root,
+            prompt,
+            runtime_mode="claude-native",
+            event=str(payload.get("hook_event_name", "") or ""),
+        )
+        reminder = render_runtime_context(project_root, context, target="claude-hook")
         if reminder.strip():
             print(reminder)
     except Exception:
