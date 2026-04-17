@@ -94,17 +94,11 @@ jira issue transition KEY --id TRANSITION_ID \
 
 ### P6: 添加外链（MR 链接等）
 
-开发完成或提交 MR 后，常需在 Issue 上关联外部链接：
+开发完成或提交 MR 后，常需在 Issue 上关联外部链接。详细操作见 [[jira-remotelink|skills/integration/jira-remotelink/handler]]。
 
 ```bash
-# 添加 MR 链接
+# 快速添加 MR 链接
 jira issue remotelink KEY --url https://gitlab.com/merge/42 --title "MR !42"
-
-# 查看已有外链
-jira issue remotelink KEY --list
-
-# 删除外链
-jira issue remotelink KEY --delete LINK_ID
 ```
 
 ## Rules

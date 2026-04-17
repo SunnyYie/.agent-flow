@@ -29,7 +29,7 @@ created: 2026-04-16
 - [[ai-optimization|topics/ai-optimization]] — AI/LLM优化（5个技能）
 - [[documentation|topics/documentation]] — 文档处理（4个技能）
 - [[python|topics/python]] — Python模式（3个技能）
-- [[research|topics/research]] — 研究与发现（3个技能）
+- [[research|topics/research]] — 研究与发现（4个技能）
 
 ## Workflow（任务流程控制）
 
@@ -44,10 +44,10 @@ created: 2026-04-16
 
 ## Agent-Orchestration（多Agent编排）
 
-- [agent-orchestration](agent-orchestration/agent-orchestration/handler.md) — 多子Agent流水线编排与质量门控
-- [main-agent-dispatch](agent-orchestration/main-agent-dispatch/handler.md) — 上下文隔离派发协议
+- [agent-orchestration](agent-orchestration/agent-orchestration/handler.md) — 多子Agent流水线编排（已合并至 orchestrator-worker）
+- [main-agent-dispatch](agent-orchestration/main-agent-dispatch/handler.md) — 上下文隔离派发协议（含预算估算）
 - [orchestrator-worker](agent-orchestration/orchestrator-worker/handler.md) — 编排者-工作者模式（多视角并行）
-- [context-budget](agent-orchestration/context-budget/handler.md) — 上下文预算追踪与自动派发
+- [context-budget](agent-orchestration/context-budget/handler.md) — 上下文预算追踪（已合并至 main-agent-dispatch）
 - [ai-context-management](agent-orchestration/ai-context-management/handler.md) — 多Agent间上下文传递策略
 
 ## Knowledge（知识管理与检索）

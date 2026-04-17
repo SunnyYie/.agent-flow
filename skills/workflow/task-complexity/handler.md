@@ -5,11 +5,15 @@ trigger: 任务复杂度评估, complexity assessment, 新任务分级
 confidence: 1.0
 abstraction: universal
 created: 2026-04-14
+status: integrated
+integrated_into: workflow/pre-flight-check/handler.md
 ---
 
 # Skill: Task Complexity Assessment（任务复杂度量化评估）
 
 > **量化驱动的复杂度分级**。替代主观 S/M/X 判断，通过 5 维评分矩阵得出客观复杂度等级，决定后续流程强度。
+>
+> **注意**：本 Skill 已整合到 `pre-flight-check` Step 2 中。本文档保留 5 维评分矩阵的完整定义作为参考。
 
 ## Trigger
 

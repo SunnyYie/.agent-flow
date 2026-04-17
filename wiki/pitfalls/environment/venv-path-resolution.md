@@ -22,15 +22,17 @@ status: verified
 **错误模式**：
 ```bash
 # 在子目录下执行会报 command not found
+# .venv/ lives at the project root, not in subdirectories —
+# a relative path resolves from CWD, so from src/ this looks for src/.venv/bin/pytest
 .venv/bin/pytest
 ```
 
 **正确做法**：
 ```bash
-# 必须使用完整路径
+# 必须使用完整路径 — absolute path is immune to CWD changes
 {project_root}/.venv/bin/pytest
 
-# 或在项目根目录下执行
+# 或在项目根目录下执行 — cd resets CWD so the relative path resolves correctly
 cd {project_root} && .venv/bin/pytest
 ```
 

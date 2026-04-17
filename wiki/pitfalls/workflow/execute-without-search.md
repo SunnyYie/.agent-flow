@@ -2,61 +2,23 @@
 name: execute-without-search
 type: pitfall
 module: workflow
-status: verified
+status: deprecated
 confidence: 0.95
 created: 2026-04-13
-last_validated: 2026-04-14
+last_validated: 2026-04-16
 tags: [workflow, execute, pitfall, quality, search-first, skill-first]
+redirect: patterns/workflow/search-before-execute.md
 ---
 
 # 不查就执行陷阱
 
-> 不搜索 Skill/Wiki/Soul 就直接执行，导致输出质量差、已知问题重复踩坑。
+> 已合并至 [[search-before-execute|patterns/workflow/search-before-execute]]，该文档的"常见违规表现"章节包含本文件全部内容。
 
-## 三种典型表现
+本文档内容已整合到先查后执行模式文档中，包括4种典型违规表现（完全不搜索、已知问题重复、先试错再查、搜索一次性误区）及修复方案。
 
-### 表现 1: 完全不搜索就执行
-EXECUTE 阶段跳过搜索现有方案就自行执行，导致输出质量差：
-- 内容过滤：没搜索过滤规范 → 保留了冗余内容
-- 格式转换：没搜索标准模板 → 自行臆断格式
-- 双验收：没搜索验收标准 → 验收项不专业
-
-### 表现 2: 跳过搜索导致已知问题重复
-执行子任务时，没有先搜索 skill/soul/wiki 中的已有知识，直接凭经验执行，导致已知问题再次发生。例如：全局已有 `gitlab-mr-creation` skill 明确记录了"glab mr create 可能 404，优先用 API"，但跳过搜索步骤直接用了 `glab mr create`。
-
-### 表现 3: 先试错再查 Skill
-先用自己的方式尝试（如 glab mr create），失败后才去搜索和读取相关 Skill。根因是对已知操作过于自信，认为不需要查 Skill，试错成本心理预期过低。
-
-### 表现 4: 研究阶段搜过就以为实施阶段不用再搜
-研究/计划阶段执行过知识检索后，进入实施阶段连续编码时跳过 subtask-guard。误以为搜索是"一次性"动作，实际上每个子任务的上下文不同，需要的知识也不同。
-
-**典型场景**：pre-flight 阶段完成5步知识检索后，连续实施 T1→T2→T3...子任务时不再搜索。结果：前端状态枚举类型不对齐的问题未在编码阶段发现，验收阶段才被 Verifier Agent 捕获。
-
-**根因**：
-1. 前置搜索针对整体任务，子任务有特定知识需求（如"前后端类型对齐"这个维度在前置搜索中未覆盖）
-2. 连续编码时上下文窗口中可能已丢失前置搜索结果
-3. 误将"已做过搜索"等同于"搜索结果仍然适用"
-
-**修复**：实施阶段每个子任务前必须重新执行 subtask-guard，不论前置阶段是否搜索过。每个子任务的关键词应更精确（2-3个核心词），而非重复前置搜索的大范围关键词。
-
-## 根因
-
-1. 认知循环中"查找技能"只停留在工具层面，没有扩展到知识层面（过滤规范、格式模板、验收标准）
-2. 对已知操作过于自信，认为不需要查 Skill
-3. 忘记了"搜索先行"铁律适用于所有任务，包括看似熟悉的操作
-
-## 修复方案
-
-**每个子任务执行前必须执行搜索检查**：
-1. `Grep` 搜索 `~/.agent-flow/skills/` 查找匹配技能
-2. `Grep` 搜索 `.agent-flow/skills/` 查找项目技能
-3. `Grep` 搜索 Soul.md 查找相关经验
-4. `Grep` 搜索 Wiki 查找相关知识
-5. 找到匹配 → 按 Procedure 执行
-6. 未找到 → WebSearch 后再执行
-
-**绝对禁止**：不搜索就直接执行，即使"觉得自己知道怎么做"。agent-flow 高频违规场景表是必须检查的清单，不是参考。
+请参阅：[[search-before-execute|patterns/workflow/search-before-execute]]
 
 ## 相关条目
+
 - [[search-before-execute|patterns/workflow/search-before-execute]]
-- [[git-archaeology-oversearch|Git考古过度搜索陷阱]]（反面：搜索过度）
+- [[git-archaeology-oversearch|pitfalls/workflow/git-archaeology-oversearch]]

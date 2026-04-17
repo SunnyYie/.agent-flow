@@ -114,9 +114,11 @@ agents:
 
 ```
 Agent({
-    description: "executor-{n}: {任务标题}",
+    description: "executor-{n}: {任务标题}",  // Replace {n} with worker number, {任务标题} with a short task title
     prompt: "你是执行者 Agent。\n任务: {任务描述}\n验收标准: {验收标准}\n任务包: .agent-flow/artifacts/task-{id}-packet.md\n完成后写摘要到: .agent-flow/artifacts/task-{id}-summary.md\n完整结果写到: .agent-flow/artifacts/task-{id}-result.md\n修改文件列表写到: .agent-flow/artifacts/task-{id}-files.txt",
-    subagent_type: "general-purpose"
+    // ^ Replace {任务描述} with the specific work items, {验收标准} with acceptance criteria
+    // ^ {id} must match the task ID in flow-context.yaml so the main agent can find artifacts later
+    subagent_type: "general-purpose"  // Always "general-purpose" — Claude Code's only subagent type
 })
 ```
 
@@ -124,8 +126,10 @@ Agent({
 
 ```
 Agent({
-    description: "verifier-{n}: 验证任务{id}",
+    description: "verifier-{n}: 验证任务{id}",  // Replace {n} with verifier number, {id} with the task being verified
     prompt: "你是验证者 Agent。\n验证任务: {任务描述}\n验收标准: {验收标准}\n被验证的摘要: .agent-flow/artifacts/task-{id}-summary.md\n被验证的文件列表: .agent-flow/artifacts/task-{id}-files.txt\n任务包: .agent-flow/artifacts/task-{id}-packet.md\n写验证结果到: .agent-flow/artifacts/task-{id}-verification.md",
+    // ^ The verifier reads the executor's summary + file list (not the full result) to check accuracy
+    // ^ {id} must match the executor task ID — verifier and executor share the same task-{id} prefix
     subagent_type: "general-purpose"
 })
 ```
@@ -134,8 +138,10 @@ Agent({
 
 ```
 Agent({
-    description: "researcher-{n}: 调研{主题}",
+    description: "researcher-{n}: 调研{主题}",  // Replace {n} with researcher number, {主题} with the research topic
     prompt: "你是研究者 Agent。\n调研主题: {主题}\n任务包: .agent-flow/artifacts/task-{id}-packet.md\n写调研结果到: .agent-flow/artifacts/task-{id}-result.md\n写摘要到: .agent-flow/artifacts/task-{id}-summary.md",
+    // ^ Researchers need a topic but no acceptance criteria — output is informational, not verifiable
+    // ^ {id} must match the task ID in flow-context.yaml
     subagent_type: "general-purpose"
 })
 ```
@@ -208,6 +214,37 @@ Agent({
 2. 写入 L1 摘要（1 行）
 3. 更新 agent 状态为 completed
 4. 更新上下文预算
+
+## 上下文预算估算方法
+
+Claude Code 不暴露 token 计数，使用启发式方法追踪：
+
+### 方法 1: 文件大小追踪（PostToolUse Hook 自动执行）
+
+```python
+# 每次读取文件时，累加文件大小到预算追踪器
+# 估算公式: tokens ≈ file_size_bytes / 4 (英文) / 2 (中文)
+def estimate_tokens(file_path: str) -> int:
+    size = os.path.getsize(file_path)
+    # 保守估算：假设混合内容，1 byte ≈ 0.3 token
+    return int(size * 0.3)
+```
+
+### 方法 2: 对话轮次估算
+
+```text
+估算 tokens ≈ 对话轮次数 × 2000 (平均每轮)
+```
+
+### 预算不足时的压缩策略
+
+当 status = warning 或 critical 时：
+
+1. **摘要淘汰**: flow-context.yaml 中的 L1 摘要只保留最近 5 条，更早的只保留 artifact 路径
+2. **避免读取大文件**: 优先读取 summary 文件而非 result 文件
+3. **强制派发**: 将剩余任务全部派发给子 Agent
+4. **状态最小化**: 只保留当前阶段和待处理任务列表
+5. **新阶段重置**: 每个阶段开始时重置预算，因为上下文压缩会释放空间
 
 ## 并行派发规则
 

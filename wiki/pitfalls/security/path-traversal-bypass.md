@@ -25,10 +25,15 @@ Worktree 边界检查使用 `PurePosixPath` 的 `startswith` 比较，导致 `/w
 
 ```python
 # 危险！PurePosixPath 不解析 ..
+# PurePosixPath is a pure string manipulator — it never touches the filesystem,
+# so "../" stays as a literal path segment instead of being resolved upward.
+# "/worktree/../etc/passwd".is_relative_to("/worktree") → True (the string starts with "/worktree")
 if PurePosixPath(user_path).is_relative_to(worktree_root):
     ...
 
 # 正确！Path.resolve() 先规范化再比较
+# Path.resolve() follows symlinks and collapses ".." by hitting the filesystem,
+# turning "/worktree/../etc/passwd" into "/etc/passwd" before the comparison.
 if Path(user_path).resolve().is_relative_to(worktree_root):
     ...
 ```

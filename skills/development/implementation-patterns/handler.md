@@ -27,18 +27,7 @@ When implementing features — especially extending existing modules or creating
 
 **场景**：需要同时有运行时类型提示和校验能力（如 WorkflowState + WorkflowStateModel）
 
-**模式**：
-
-```python
-# state.py — 运行时类型（TypedDict，轻量）
-class WorkflowState(TypedDict):
-    field: str
-
-# state_schema.py — 校验模型（Pydantic，重量级）
-class WorkflowStateModel(BaseModel):
-    field: str
-    model_config = {"extra": "forbid"}
-```
+> 详细模式说明和代码示例见 [[pydantic-patterns|skills/python/pydantic-patterns/handler]] Pattern 1。
 
 **原则**：
 
@@ -78,7 +67,11 @@ def default_workflow_state() -> WorkflowState:
     )
 ```
 
-## Pattern 5: Graceful Serialization with Type Conversion
+## Pattern 5: YAML → Pydantic Validation Pipeline
+
+> 详细模式说明和代码示例见 [[pydantic-patterns|skills/python/pydantic-patterns/handler]] Pattern 5 和 Pattern 6。
+
+## Pattern 6: Graceful Serialization with Type Conversion
 
 **场景**：序列化可能包含非 JSON 原生类型（datetime 等）的字典
 

@@ -82,6 +82,16 @@ Executor 和 Verifier 互斥运行，绝不同时存在：
 2. 一条消息启动多个Agent：使用多个Agent工具调用，每个任务一个Executor
 3. 合并小任务：预估<100行的子任务合并到同组任务一起执行
 
+## 常见违规：跳过 Verifier
+
+因性能问题跳过 Verifier Agent 验收，违反双验收铁律，导致遗漏问题未被发现：
+
+- `.gitignore` 文件丢失未被及时发现
+- 缓存目录未加入 gitignore
+- 文件存在性验证被 Main Agent 自检遗漏
+
+**正确做法**：按需启停 Agent — 执行时开 Executor 关 Verifier，验证时开 Verifier 关 Executor。绝不能因性能问题跳过验收，性能问题应通过优化启停策略解决，而非牺牲质量。Verifier 的价值在于独立视角，Main Agent 自检容易遗漏自身盲点。
+
 ## 相关页面
-- [[skipping-verifier|跳过Verifier验收的后果]]
+
 - [[execute-without-search|不查就执行陷阱]]

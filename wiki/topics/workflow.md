@@ -41,7 +41,7 @@ updated: 2026-04-15
 ## Concepts（相关概念）
 
 - [[thinking-chain-guidelines|concepts/thinking-chain-guidelines]] — 思维链准则（文档驱动 + ReAct/Plan-and-Resolve/Reflection/自主学习/升级规则）
-- [[agent-resolution-order|concepts/agent-resolution-order]] — Agent 调度优先级：Command → Agent → Skill
+- [[agent-resolution-order|concepts/agent-resolution-order]] — Agent 调度优先级：Skill → Agent → Command
 - [[memory-systems|concepts/memory-systems]] — Claude Code 四层记忆系统
 - [[wiki-management|concepts/wiki-management]] — Wiki知识库管理规范
 

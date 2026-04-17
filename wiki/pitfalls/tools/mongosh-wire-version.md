@@ -28,9 +28,10 @@ mongosh 内置的 Node.js Driver 要求 MongoDB >= 4.2（wire version >= 8），
 
 ```python
 from pymongo import MongoClient
+# serverSelectionTimeoutMS=5000 — fail fast instead of hanging 30s on incompatible servers
 client = MongoClient(MONGODB_URI, serverSelectionTimeoutMS=5000)
-db = client['dbname']
-for doc in db.collection.find():
+db = client['dbname']  # Access database by name — pymongo auto-negotiates the wire protocol
+for doc in db.collection.find():  # Cursor-based iteration — pymongo handles batch fetching internally
     print(doc)
 ```
 

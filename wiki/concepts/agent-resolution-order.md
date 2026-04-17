@@ -1,5 +1,5 @@
 ---
-title: "Agent 调度优先级：Command → Agent → Skill"
+title: "Agent 调度优先级：Skill → Agent → Command"
 category: concept
 module: architecture
 agents: [main, planner, architect]
@@ -12,7 +12,7 @@ created: 2026-04-14
 updated: 2026-04-14
 ---
 
-# Agent 调度优先级：Command → Agent → Skill
+# Agent 调度优先级：Skill → Agent → Command
 
 > 当多种机制可满足同一意图时，按 Skill → Agent → Command 优先级选择。
 

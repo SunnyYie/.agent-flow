@@ -36,16 +36,16 @@ async def speculative_cache_warmup(client, context_message):
     """在用户输入期间后台预热缓存。"""
     await client.messages.create(
         model="claude-sonnet-4-6",
-        max_tokens=1,  # 仅采样 1 token
-        cache_control={"type": "ephemeral"},
+        max_tokens=1,  # Sample only 1 token to minimize warmup cost — we don't need the response, just the cache entry
+        cache_control={"type": "ephemeral"},  # Cache breakpoint marker — tells the API to cache everything up to this message
         messages=[context_message],
     )
 
 # 用户开始输入时启动预热
 cache_task = asyncio.create_task(speculative_cache_warmup(client, ctx))
 # ... 用户输入 ...
-await cache_task  # 确保预热完成
-# 正式请求，缓存已就绪
+await cache_task  # 确保预热完成 — the cache entry is now pinned in the API's cache for ~5 min
+# 正式请求，缓存已就绪 — the same context_message prefix hits the cache, skipping reprocessing
 ```
 
 ### 适用场景

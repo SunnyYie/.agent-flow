@@ -55,8 +55,7 @@ codex -m o3              # 临时切换模型
 
 ## 注意事项
 
-- `codex login` 只更新 auth.json，不修改 config.toml
-- 切换账号后必须手动同步 config.toml 中的 provider 和 auth_method
+- `codex login` 只更新 auth.json，不修改 config.toml — 详见 [[codex-provider-auth-mismatch|登录后配置不匹配踩坑]]
 - Azure 代理需要自定义 `[model_providers.azure]` 段和 `base_url`
 
 ## 相关条目

@@ -11,6 +11,17 @@
 - 需要比较不同策略或风格的输出时
 - 单一 LLM 调用无法覆盖任务的多个维度时
 
+## Agent 角色分配策略
+
+| 任务类型 | 角色 | 说明 |
+|---------|------|------|
+| 信息搜索/调研 | Researcher | 查资料、找方案、交叉验证 |
+| 代码实现 | Coder | 按设计文档编码、TDD |
+| 文档撰写/转换 | Writer | 按模板组织、精确保留数据 |
+| 质量验收 | Verifier | 证据驱动、标准先行 |
+| 架构设计 | Architect | 权衡分析、ADR记录 |
+| 任务规划 | Planner | 分解任务、标注依赖 |
+
 ## Required Reading — 前置阅读
 
 - `~/.agent-flow/skills/agent-orchestration/main-agent-dispatch/handler.md` — 主 Agent 派发协议（上下文隔离核心）
@@ -50,13 +61,18 @@ Task: {task}
 Return your response in this format:
 
 <analysis>
+# Structured analysis section — the orchestrator's reasoning about
+# the task and which perspectives/approaches would add value.
+# Parsed separately to surface the rationale before task dispatch.
 Explain your understanding of the task and which variations would be valuable.
 </analysis>
 
 <tasks>
+# Task list section — each <task> becomes one worker dispatch.
+# The number of <task> entries determines worker count.
     <task>
-    <type>approach_name</type>
-    <description>What this approach should focus on</description>
+    <type>approach_name</type>           # Becomes {task_type} in the worker prompt
+    <description>What this approach should focus on</description>  # Becomes {task_description}
     </task>
 </tasks>
 """
@@ -73,9 +89,9 @@ Explain your understanding of the task and which variations would be valuable.
 ```python
 WORKER_PROMPT = """
 Generate content based on:
-Task: {original_task}
-Style: {task_type}
-Guidelines: {task_description}
+Task: {original_task}          # Full original task — workers need complete context, not just their slice
+Style: {task_type}             # The approach name from <type>, e.g. "formal", "casual", "technical"
+Guidelines: {task_description} # Specific focus from <description>, e.g. "focus on performance tradeoffs"
 
 Return your response in this format:
 
@@ -118,16 +134,21 @@ Agent({
 ```python
 from agent_flow.core.orchestrator import FlexibleOrchestrator, ORCHESTRATOR_PROMPT, WORKER_PROMPT
 
+# my_llm_call_fn must accept (prompt: str) -> str and return the LLM's text response.
+# Use this Python class for simple tasks that don't need Claude Code's Agent tool
+# (i.e. no file I/O, no Bash, no multi-tool workflows — just LLM text generation).
+# Example: my_llm_call_fn = lambda prompt: client.messages.create(model=..., max_tokens=..., messages=[...]).content[0].text
+
 orchestrator = FlexibleOrchestrator(
-    orchestrator_prompt=ORCHESTRATOR_PROMPT,
-    worker_prompt=WORKER_PROMPT,
-    llm_call=my_llm_call_fn,
-    max_workers=3,
+    orchestrator_prompt=ORCHESTRATOR_PROMPT,  # Prompts the orchestrator to decompose the task
+    worker_prompt=WORKER_PROMPT,              # Template applied to each decomposed sub-task
+    llm_call=my_llm_call_fn,                  # Your LLM call function — the orchestrator calls this N+1 times
+    max_workers=3,                            # Upper bound on parallel workers (1 orchestrator + up to 3 workers)
 )
 
 result = orchestrator.process(
-    task="Write a product description for X",
-    context={"target_audience": "developers", "key_features": ["fast", "secure"]},
+    task="Write a product description for X",  # The original task passed as {task} / {original_task}
+    context={"target_audience": "developers", "key_features": ["fast", "secure"]},  # Optional extra context injected into prompts
 )
 
 # result.analysis — 编排者分析
@@ -153,6 +174,15 @@ result = orchestrator.process(
 4. **延迟考量**：工作者并行执行可降低延迟，串行执行会增加总时间
 5. **XML 解析健壮性**：LLM 可能不严格遵循 XML 格式，解析代码需容错
 6. **工作者失败兜底**：子Agent可能因429速率限制失败，主Agent必须用Glob检查产出文件是否存在，不存在则自行完成。详见 `wiki/pitfalls/workflow/multi-agent-rate-limit-recovery.md`
+
+### 质量门控
+
+- 每个子任务必须通过双验收才能进入下一个
+- 验收失败 → 带反馈返回执行者，最多重试3次
+- 3次失败 → 标记为阻塞，继续后续任务
+- 子Agent用完即关，不保持空闲
+- 每个Agent只做分配给它的任务，不越界
+- 阶段完成后必须写阶段总结到 `.agent-flow/logs/dev_log.md`
 
 ## 相关
 
