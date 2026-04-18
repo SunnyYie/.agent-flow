@@ -119,6 +119,11 @@ def load_marker_entries(path: Path) -> list[dict[str, str]]:
     return entries
 
 
+# ---- Shared BLOCKED-message constants ----
+NO_RETRY_LINE = "⛔ 不要重试当前操作！重复同样的操作只会再次被拦截。"
+UNBLOCK_SUFFIX = "完成后，当前操作会自动放行。"
+
+
 def structured_marker_exists(path: Path, required: tuple[str, ...]) -> bool:
     for entry in load_marker_entries(path):
         if all(entry.get(key, "").strip() for key in required):

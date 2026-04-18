@@ -45,8 +45,10 @@ def main():
     branch = get_git_branch()
     if branch in PROTECTED_BRANCHES:
         print(
-            f"[BLOCKED] Git commit/push on protected branch: {branch}. "
-            f"Create a feature branch first."
+            f"[BLOCKED] Git commit/push on protected branch: {branch}\n"
+            f"Do not retry — the same action will be blocked again.\n\n"
+            f"Create a feature branch first, then retry:\n"
+            f"  git pull --rebase && git checkout -b feat/xxx"
         )
         sys.exit(2)
 

@@ -311,8 +311,11 @@ def main():
                         f"[AgentFlow BLOCKED] 向项目文档添加了重复标签！\n"
                         f"目标: {file_path}\n"
                         f"重复项: {duplicate}\n\n"
-                        f"请先读取现有内容，确认标签不存在后再添加。\n"
-                        f"如需重新生成完整索引，运行: agent-flow init --dev-workflow --force"
+                        f"⛔ 不要重试当前操作！重复同样的操作只会再次被拦截。\n\n"
+                        f"✅ 解除方法：\n"
+                        f"  先读取现有内容，确认标签不存在后再添加\n"
+                        f"  如需重新生成完整索引: agent-flow init --dev-workflow --force\n"
+                        f"  完成后，当前操作会自动放行。"
                     )
                     sys.exit(2)
 
@@ -381,11 +384,12 @@ def main():
                 f"[AgentFlow BLOCKED] 全局知识库中已有相似内容，禁止重复创建！\n"
                 f"目标: {file_path}\n"
                 f"新建标题: {new_title or new_name}\n\n"
-                f"已有相似文档:\n{similar_list}\n\n"
-                f"请执行以下操作之一：\n"
+                f"⛔ 不要重试当前操作！重复同样的操作只会再次被拦截。\n\n"
+                f"✅ 解除方法（任选其一）：\n"
                 f"1. 更新已有文档（推荐）：Edit 已有文件，合并新内容\n"
                 f"2. 如果确认是全新主题，先执行 promotion-verify Skill 获取验收标记\n"
-                f"   启动 Verifier Agent 独立验收 → 通过后自动放行"
+                f"   启动 Verifier Agent 独立验收 → 通过后自动放行\n\n"
+                f"已有相似文档:\n{similar_list}"
             )
             sys.exit(2)
         else:
@@ -394,10 +398,12 @@ def main():
                 f"[AgentFlow BLOCKED] 写入全局知识库需要先通过多Agent验收！\n"
                 f"目标: {file_path}\n"
                 f"新建标题: {new_title or new_name}\n\n"
-                f"请执行: promotion-verify Skill\n"
-                f"1. 启动 Verifier Agent 独立审查内容（通用性+质量+去重）\n"
-                f"2. 验收通过后创建 .promotion-verified 标记\n"
-                f"3. 再次写入时自动放行"
+                f"⛔ 不要重试当前操作！重复同样的操作只会再次被拦截。\n\n"
+                f"✅ 解除方法：\n"
+                f"  执行 promotion-verify Skill\n"
+                f"  1. 启动 Verifier Agent 独立审查内容（通用性+质量+去重）\n"
+                f"  2. 验收通过后创建 .promotion-verified 标记\n"
+                f"  完成后，当前操作会自动放行。"
             )
             sys.exit(2)
     else:

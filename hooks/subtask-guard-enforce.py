@@ -19,7 +19,13 @@ import os
 import sys
 import time
 
-from contract_utils import find_project_root, get_complexity_level, read_state_path
+from contract_utils import (
+    NO_RETRY_LINE,
+    UNBLOCK_SUFFIX,
+    find_project_root,
+    get_complexity_level,
+    read_state_path,
+)
 
 # 各复杂度的标记有效期（秒）— v2: 适度放宽
 MAX_AGE_MAP = {
@@ -46,26 +52,27 @@ CODE_FILENAMES = {
 # 允许的路径前缀（不受 subtask-guard 检查限制）
 ALLOWED_PATH_PREFIXES = (".agent-flow", ".dev-workflow", ".claude")
 
-GUARD_PROMPT = """[AgentFlow BLOCKED] Subtask-guard 未执行 — 你没有在修改代码前搜索知识库！
+GUARD_PROMPT = f"""[AgentFlow BLOCKED] Subtask-guard 未执行 — 你没有在修改代码前搜索知识库！
 
-快速解决（任选一种）：
-  ┌───────────────────────────────────────────────────┐
-  │ 方案 A: 快速搜索（推荐，1步即可解除）             │
-  │   Grep "{关键词}" .agent-flow/skills/             │
-  │   或 Grep "{关键词}" ~/.agent-flow/skills/        │
-  │   搜索后标记自动创建，立即可继续编辑              │
-  ├───────────────────────────────────────────────────┤
-  │ 方案 B: 完整 subtask-guard 流程（新子任务时使用） │
-  │   1. Grep "{关键词}" .agent-flow/skills/          │
-  │   2. Grep "{关键词}" ~/.agent-flow/skills/        │
-  │   3. Grep "{关键词}" .agent-flow/memory/main/Soul.md │
-  │   4. Grep "{关键词}" .agent-flow/wiki/ + 全局wiki │
-  ├───────────────────────────────────────────────────┤
-  │ 方案 C: 如果是跨会话误触，执行任意搜索即可重置    │
-  │   Grep "subtask" .agent-flow/                     │
-  └───────────────────────────────────────────────────┘
+{NO_RETRY_LINE}
 
-标记有效期：Simple 60min / Medium 30min / Complex 20min"""
+✅ 解除方法：完成以下任一方案后，当前操作会自动放行：
+
+  方案 A: 快速搜索（推荐，1步即可解除）
+    Grep "{{关键词}}" .agent-flow/skills/ 或 ~/.agent-flow/skills/
+    搜索后标记自动创建
+
+  方案 B: 完整 subtask-guard 流程（新子任务时使用）
+    1. Grep "{{关键词}}" .agent-flow/skills/
+    2. Grep "{{关键词}}" ~/.agent-flow/skills/
+    3. Grep "{{关键词}}" .agent-flow/memory/main/Soul.md
+    4. Grep "{{关键词}}" .agent-flow/wiki/ + 全局wiki
+
+  方案 C: 跨会话误触，执行任意搜索即可重置
+    Grep "subtask" .agent-flow/
+
+  {UNBLOCK_SUFFIX}
+  标记有效期：Simple 60min / Medium 30min / Complex 20min"""
 
 
 def get_max_age(project_root) -> int:

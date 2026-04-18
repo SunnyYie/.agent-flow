@@ -11,7 +11,13 @@ import json
 import os
 import sys
 
-from contract_utils import find_project_root, get_complexity_level, read_state_path
+from contract_utils import (
+    NO_RETRY_LINE,
+    UNBLOCK_SUFFIX,
+    find_project_root,
+    get_complexity_level,
+    read_state_path,
+)
 
 
 # 始终放行的工具（读取/搜索/交互类）
@@ -128,13 +134,18 @@ def main():
         if not os.path.isfile(phase_file) or os.path.getsize(phase_file) <= 10:
             print(
                 f"[AgentFlow BLOCKED] Pre-flight 未完成，禁止修改代码文件: {file_path}\n"
-                f"请先完成 pre-flight-check 的步骤，创建 current_phase.md 后再执行。"
+                f"{NO_RETRY_LINE}\n\n"
+                f"✅ 解除方法：\n"
+                f"  完成 pre-flight-check 步骤，创建 current_phase.md\n"
+                f"  {UNBLOCK_SUFFIX}"
             )
         else:
             print(
                 f"[AgentFlow BLOCKED] 任务复杂度未评估，禁止修改代码文件: {file_path}\n"
-                f"请先执行 task-complexity skill 创建 .complexity-level 标记。\n"
-                f"→ 调用 task-complexity skill 进行 5 维量化评分，将结果写入 .agent-flow/state/.complexity-level"
+                f"{NO_RETRY_LINE}\n\n"
+                f"✅ 解除方法：\n"
+                f"  执行 task-complexity skill → 创建 .agent-flow/state/.complexity-level\n"
+                f"  {UNBLOCK_SUFFIX}"
             )
         sys.exit(2)
 
@@ -150,12 +161,18 @@ def main():
         if not os.path.isfile(phase_file) or os.path.getsize(phase_file) <= 10:
             print(
                 f"[AgentFlow BLOCKED] Pre-flight 未完成，禁止执行命令: {command[:80]}\n"
-                f"请先完成 pre-flight-check 的步骤，创建 current_phase.md 后再执行。"
+                f"{NO_RETRY_LINE}\n\n"
+                f"✅ 解除方法：\n"
+                f"  完成 pre-flight-check 步骤，创建 current_phase.md\n"
+                f"  {UNBLOCK_SUFFIX}"
             )
         else:
             print(
                 f"[AgentFlow BLOCKED] 任务复杂度未评估，禁止执行命令: {command[:80]}\n"
-                f"请先执行 task-complexity skill 创建 .complexity-level 标记。"
+                f"{NO_RETRY_LINE}\n\n"
+                f"✅ 解除方法：\n"
+                f"  执行 task-complexity skill → 创建 .agent-flow/state/.complexity-level\n"
+                f"  {UNBLOCK_SUFFIX}"
             )
         sys.exit(2)
 
@@ -163,7 +180,10 @@ def main():
     if tool_name == "NotebookEdit":
         print(
             "[AgentFlow BLOCKED] Pre-flight 未完成，禁止编辑 Notebook。\n"
-            "请先完成 pre-flight-check 的 5 个步骤。"
+            f"{NO_RETRY_LINE}\n\n"
+            "✅ 解除方法：\n"
+            "  完成 pre-flight-check 的 5 个步骤\n"
+            f"  {UNBLOCK_SUFFIX}"
         )
         sys.exit(2)
 

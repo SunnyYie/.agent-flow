@@ -18,6 +18,8 @@ import sys
 import time
 
 from contract_utils import (
+    NO_RETRY_LINE,
+    UNBLOCK_SUFFIX,
     detect_plan_format,
     find_project_root,
     get_complexity_level,
@@ -199,9 +201,11 @@ def main():
         if branch in PROTECTED_BRANCHES:
             print(
                 f"[AgentFlow BLOCKED] 当前在 {branch} 分支，禁止直接修改代码文件！\n"
-                f"请先创建 feature 分支:\n"
+                f"{NO_RETRY_LINE}\n\n"
+                f"✅ 解除方法：\n"
                 f"  git pull --rebase\n"
                 f"  git checkout -b feat/xxx\n"
+                f"  {UNBLOCK_SUFFIX}\n"
                 f"目标文件: {file_path}"
             )
             sys.exit(2)
@@ -211,11 +215,13 @@ def main():
         if not has_plan:
             print(
                 f"[AgentFlow BLOCKED] 没有实施计划文档，禁止修改代码文件！\n"
-                f"请先完成:\n"
+                f"{NO_RETRY_LINE}\n\n"
+                f"✅ 解除方法：\n"
                 f"  1. 搜索并执行 requirement-decomposition 技能\n"
                 f"  2. 创建 .agent-flow/state/requirement-decomposition.md\n"
                 f"  3. 或在 current_phase.md 中添加 ## 实施计划 章节\n"
-                f"  4. 获得用户确认后才能开始编码\n"
+                f"  4. 获得用户确认\n"
+                f"  {UNBLOCK_SUFFIX}\n"
                 f"目标文件: {file_path}"
             )
             sys.exit(2)
@@ -409,13 +415,14 @@ def main():
                         save_guard_state(state)
                         print(
                             f"[AgentFlow BLOCKED] 连续 {count} 次代码修改且未执行搜索！\n"
-                            f"这是第 2 次违反，强制阻断。\n\n"
-                            f"请立即执行 subtask-guard 技能：\n"
+                            f"{NO_RETRY_LINE}\n\n"
+                            f"✅ 解除方法：执行 subtask-guard 搜索知识库：\n"
                             f"  1. Grep '{{子任务关键词}}' .agent-flow/skills/\n"
                             f"  2. Grep '{{子任务关键词}}' ~/.agent-flow/skills/\n"
                             f"  3. Grep '{{子任务关键词}}' .agent-flow/memory/main/Soul.md\n"
-                            f"  4. Grep '{{子任务关键词}}' ~/.agent-flow/wiki/ + .agent-flow/wiki/\n\n"
-                            f"搜索完成后可继续编码。参考: ~/.agent-flow/skills/workflow/subtask-guard/handler.md"
+                            f"  4. Grep '{{子任务关键词}}' ~/.agent-flow/wiki/ + .agent-flow/wiki/\n"
+                            f"  {UNBLOCK_SUFFIX}\n\n"
+                            f"参考: ~/.agent-flow/skills/workflow/subtask-guard/handler.md"
                         )
                         sys.exit(2)
 

@@ -20,7 +20,13 @@ import os
 import sys
 import time
 
-from contract_utils import find_project_root, get_complexity_level, read_state_path
+from contract_utils import (
+    NO_RETRY_LINE,
+    UNBLOCK_SUFFIX,
+    find_project_root,
+    get_complexity_level,
+    read_state_path,
+)
 
 # 各复杂度的搜索标记有效期（秒）
 MAX_SEARCH_AGE_MAP = {
@@ -137,22 +143,22 @@ READONLY_BASH_PREFIXES = (
 )
 
 # 思维链提示信息
-CHAIN_PROMPT = """[AgentFlow BLOCKED] 思维链未完成 — 你没有先搜索知识库就尝试执行！
+CHAIN_PROMPT = f"""[AgentFlow BLOCKED] 思维链未完成 — 你没有先搜索知识库就尝试执行！
 
-必须按思维链执行（硬性要求，不可跳过）:
-  ┌─────────────────────────────────────────┐
-  │ 1. 思考   : 分析问题，明确要做什么       │
-  │ 2. 搜索   : Grep 搜索 Skills/Wiki       │
-  │ 3. 确认   : 找到 Skill → 按 Procedure   │
-  │            未找到 → 询问用户             │
-  │ 4. 执行   : 按方案执行操作              │
-  │ 5. 验证   : 检查是否解决                │
-  │ 6. 未解决 → 回到步骤 1（禁止推测）       │
-  └─────────────────────────────────────────┘
+{NO_RETRY_LINE}
 
-请先执行搜索:
-  Grep '关键词' ~/.agent-flow/skills/ 和 .agent-flow/skills/
-  Grep '关键词' ~/.agent-flow/wiki/pitfalls/"""
+✅ 解除方法：完成以下前置条件后，当前操作会自动放行：
+  1. 思考   : 分析问题，明确要做什么
+  2. 搜索   : Grep 搜索 Skills/Wiki
+     Grep '关键词' ~/.agent-flow/skills/ 和 .agent-flow/skills/
+     Grep '关键词' ~/.agent-flow/wiki/pitfalls/
+  3. 确认   : 找到 Skill → 按 Procedure；未找到 → 询问用户
+  {UNBLOCK_SUFFIX}
+
+搜索完成后按思维链继续执行：
+  4. 执行   : 按方案执行操作
+  5. 验证   : 检查是否解决
+  6. 未解决 → 回到步骤 1（禁止推测）"""
 
 
 def get_max_search_age(project_root) -> int:
