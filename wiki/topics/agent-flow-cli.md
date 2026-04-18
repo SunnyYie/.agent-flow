@@ -25,6 +25,8 @@ _(暂无 AgentFlow CLI 专属模式)_
 - [[add-feature-branch-conflict|pitfalls/agent-flow/add-feature-branch-conflict]] — add-feature与已有分支冲突
 - [[hook-path-inconsistency|pitfalls/agent-flow/hook-path-inconsistency]] — Hook路径不一致：current_phase.md双路径问题
 - [[git-stash-agent-flow-conflict|pitfalls/agent-flow/git-stash-agent-flow-conflict]] — git stash与agent-flow状态文件冲突
+- [[hook-chain-failure|pitfalls/agent-flow/hook-chain-failure]] — Hook脚本缺失导致PreToolUse全链式阻断
+- [[readonly-bash-absolute-path|pitfalls/agent-flow/readonly-bash-absolute-path]] — thinking-chain-enforce绝对路径不匹配READONLY_BASH_PREFIXES
 
 ## Concepts（相关概念）
 
