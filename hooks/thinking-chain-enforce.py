@@ -8,10 +8,10 @@ AgentFlow Thinking Chain Enforcer — PreToolUse hook
   Agent 搜索了 Skills/Wiki → search-tracker.py 创建 .search-done 标记
   Agent 执行代码修改 → 本 hook 检查标记 → 无标记 = 没搜索 = 阻断
 
-按复杂度分级调整行为（v2.0 新增）：
-  Simple:  搜索标记有效期 30 分钟，首次违规软提醒（不阻断）
-  Medium:  搜索标记有效期 10 分钟，硬阻断（默认行为）
-  Complex: 搜索标记有效期 5 分钟，硬阻断
+按复杂度分级调整行为（v3.0）：
+  Simple:  跳过思维链检查（简单任务无需搜索先行）
+  Medium:  搜索标记有效期 15 分钟，硬阻断
+  Complex: 搜索标记有效期 10 分钟，硬阻断
 
 仅对代码文件修改和执行命令生效，不影响读取/搜索操作。
 """
@@ -30,11 +30,10 @@ from contract_utils import (
 
 # 各复杂度的搜索标记有效期（秒）
 MAX_SEARCH_AGE_MAP = {
-    "simple": 1800,  # 30 分钟
     "medium": 900,  # 15 分钟
     "complex": 600,  # 10 分钟
 }
-DEFAULT_MAX_SEARCH_AGE = 600  # 默认 Medium
+DEFAULT_MAX_SEARCH_AGE = 900  # 默认 Medium
 
 # 代码文件扩展名
 CODE_EXTENSIONS = {
@@ -167,34 +166,6 @@ def get_max_search_age(project_root) -> int:
     return MAX_SEARCH_AGE_MAP.get(level, DEFAULT_MAX_SEARCH_AGE)
 
 
-def is_first_violation() -> bool:
-    """检查是否为首次违规（用于 Simple 任务的软提醒模式）"""
-    violation_marker = ".agent-flow/state/.chain-violation-count"
-    if not os.path.isfile(violation_marker):
-        return True
-    try:
-        with open(violation_marker, "r", encoding="utf-8") as f:
-            count = int(f.read().strip())
-            return count == 0
-    except Exception:
-        return True
-
-
-def record_violation():
-    """记录违规次数"""
-    violation_marker = ".agent-flow/state/.chain-violation-count"
-    os.makedirs(os.path.dirname(violation_marker), exist_ok=True)
-    count = 0
-    if os.path.isfile(violation_marker):
-        try:
-            with open(violation_marker, "r", encoding="utf-8") as f:
-                count = int(f.read().strip())
-        except Exception:
-            count = 0
-    with open(violation_marker, "w", encoding="utf-8") as f:
-        f.write(str(count + 1))
-
-
 def is_code_file(file_path: str) -> bool:
     """判断是否为代码文件（需要搜索标记）"""
     for prefix in ALLOWED_PATH_PREFIXES:
@@ -237,6 +208,11 @@ def main():
     if project_root is None:
         sys.exit(0)
 
+    # 低复杂度任务不需要思维链强制检查
+    complexity = get_complexity_level(project_root)
+    if complexity == "simple":
+        sys.exit(0)
+
     phase_file = read_state_path(project_root, "current_phase.md")
     phase_found = os.path.isfile(phase_file) and os.path.getsize(phase_file) > 10
     if not phase_found:
@@ -276,24 +252,10 @@ def main():
     if has_recent_search(marker_file, project_root):
         sys.exit(0)  # 搜索已做，允许执行
 
-    # 无搜索标记 → 根据复杂度决定行为
-    complexity = get_complexity_level(project_root)
-
-    if complexity == "simple" and is_first_violation():
-        # Simple 任务首次违规：软提醒（不阻断）
-        record_violation()
-        print(
-            f"[AgentFlow REMINDER] 思维链提示 — 你没有先搜索知识库！\n"
-            f"目标: {target_desc}\n"
-            f"当前复杂度: Simple（快速路径）— 首次违规仅提醒，下次将阻断。\n"
-            f"建议: 执行 Grep 搜索 Skills/Wiki 后再继续。"
-        )
-        sys.exit(0)  # 不阻断
-    else:
-        # Medium/Complex 或 Simple 重复违规：硬阻断
-        record_violation()
-        print(f"{CHAIN_PROMPT}\n目标: {target_desc}")
-        sys.exit(2)
+    # 无搜索标记 → 硬阻断（simple 已在 main() 顶部跳过）
+    record_violation()
+    print(f"{CHAIN_PROMPT}\n目标: {target_desc}")
+    sys.exit(2)
 
 
 if __name__ == "__main__":
