@@ -171,6 +171,20 @@ def main() -> None:
     if complexity == "simple":
         return
 
+    # Check agent-team-config.yaml for team mode
+    team_mode = ""
+    for state_dir in [".agent-flow/state", ".dev-workflow/state"]:
+        team_config_path = project_root / state_dir / "agent-team-config.yaml"
+        if team_config_path.is_file():
+            try:
+                import yaml as _yaml
+                with open(team_config_path, encoding="utf-8") as f:
+                    team_data = _yaml.safe_load(f)
+                team_mode = team_data.get("team_mode", "")
+            except Exception:
+                pass
+            break
+
     # Check if we're in EXECUTE phase
     in_execute = _is_execute_phase(phase_content)
     if not in_execute:
@@ -207,6 +221,26 @@ def main() -> None:
         )
     elif complexity in ("medium", "complex"):
         strength = "MUST" if complexity == "complex" else "should consider"
+
+        team_info = ""
+        if team_mode == "full-team":
+            team_info = (
+                "\n\n"
+                "Agent Team is ACTIVE (full-team mode):\n"
+                "  - Searcher: dispatched during THINK for knowledge retrieval\n"
+                "  - Executor: MUST be dispatched for code implementation\n"
+                "  - Verifier: MUST be dispatched for independent acceptance\n"
+                "  - Main Agent: coordinator ONLY — prohibited from direct search/implementation/verification\n"
+                "  - Reference: .dev-workflow/skills/agent-team-init/handler.md"
+            )
+        elif team_mode == "search-only":
+            team_info = (
+                "\n\n"
+                "Agent Team is ACTIVE (search-only mode):\n"
+                "  - Searcher: dispatched during THINK for knowledge retrieval\n"
+                "  - Main Agent: should still delegate code implementation to sub-agents for context isolation"
+            )
+
         print(
             "<system-reminder>\n"
             f"[AgentFlow DISPATCH] {complexity.upper()} task in EXECUTE phase — "
@@ -217,7 +251,8 @@ def main() -> None:
             "  - Preserve main agent context for state management\n"
             "  - Enable parallel execution of independent subtasks\n"
             "  - Ensure quality through Verifier agent spot-checks\n\n"
-            "Reference: ~/.agent-flow/skills/agent-orchestration/main-agent-dispatch/handler.md\n"
+            "Reference: ~/.agent-flow/skills/agent-orchestration/main-agent-dispatch/handler.md"
+            f"{team_info}\n"
             "</system-reminder>"
         )
 
