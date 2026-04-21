@@ -22,6 +22,17 @@ def _find_project_root() -> Path | None:
     return None
 
 
+def _bootstrap_import_path(project_root: Path) -> None:
+    """Ensure ``agent_flow`` package is importable when hooks run from ~/.agent-flow/hooks."""
+    candidates = [project_root, *project_root.parents]
+    for candidate in candidates:
+        if (candidate / "agent_flow").is_dir():
+            candidate_str = str(candidate)
+            if candidate_str not in sys.path:
+                sys.path.insert(0, candidate_str)
+            return
+
+
 def main() -> None:
     started_at = time.monotonic()
     try:
@@ -33,6 +44,7 @@ def main() -> None:
     if project_root is None or not (project_root / ".agent-flow").exists():
         return
 
+    _bootstrap_import_path(project_root)
     try:
         from agent_flow.core.hook_telemetry import append_hook_telemetry
     except ImportError:
