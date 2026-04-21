@@ -30,6 +30,7 @@
 - 自动过滤 `[ERROR] / [FAIL]` 与重复步骤
 - 将稳定路径固化为 `.dev-workflow/skills/` 中的技能
 - 同步更新 `.agent-flow/state/skill-tree.json`
+- 结晶技能内置治理信息：`Validation Command`、`Validation Checks`、`Invalidation Conditions`
 
 ### 2. 分层记忆
 
@@ -61,6 +62,12 @@
 - 支持 `balanced / innovate / harden / repair-only`
 - 输出固定要求：`MutationIntent / Evidence / PlannedChanges / Validation / Rollback`
 - 要求先依据日志、技能、记忆、停滞信号做判断，禁止自由发散
+
+### 5. skill-tree 接入运行时上下文
+
+- runtime context 新增 `skill_tree_hits`
+- 启动上下文在 THINK 阶段会读取 `.agent-flow/state/skill-tree.json`
+- 命中 skill-tree 的技能在推荐排序中会被加权提升，减少“明明已结晶却没被优先调用”的情况
 
 ## 这次补强后，agent-flow 仍然没有照搬的点
 
