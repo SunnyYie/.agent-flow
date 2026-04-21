@@ -17,6 +17,7 @@ created: 2026-04-16
 ## Skills（技能列表）
 
 - [[feishu-doc-access|integration/feishu-doc-access]] — 飞书文档/Wiki访问
+- [[mai-jira-cli|integration/mai-jira-cli]] — mai-jira-cli工具使用（安装/配置/认证/Python API）
 - [[jira-workflow|integration/jira-workflow]] — Jira需求完整生命周期
 - [[jira-quick-ops|integration/jira-quick-ops]] — Jira只读查询与轻量写入
 - [[jira-remotelink|integration/jira-remotelink]] — Jira远程链接管理

@@ -25,7 +25,7 @@ created: 2026-04-16
 - [[knowledge|topics/knowledge]] — 知识管理与检索（5个技能）
 - [[development|topics/development]] — 代码开发与质量（7个技能）
 - [[git|topics/git]] — Git操作（2个技能）
-- [[integration|topics/integration]] — 外部系统集成（4个技能）
+- [[integration|topics/integration]] — 外部系统集成（5个技能）
 - [[ai-optimization|topics/ai-optimization]] — AI/LLM优化（5个技能）
 - [[documentation|topics/documentation]] — 文档处理（4个技能）
 - [[python|topics/python]] — Python模式（3个技能）
@@ -76,6 +76,7 @@ created: 2026-04-16
 ## Integration（外部系统集成）
 
 - [feishu-doc-access](integration/feishu-doc-access/handler.md) — 飞书文档/Wiki访问
+- [mai-jira-cli](integration/mai-jira-cli/handler.md) — mai-jira-cli工具使用（安装/配置/认证/Python API）
 - [jira-workflow](integration/jira-workflow/handler.md) — Jira需求完整生命周期
 - [jira-quick-ops](integration/jira-quick-ops/handler.md) — Jira只读查询与轻量写入
 - [jira-remotelink](integration/jira-remotelink/handler.md) — Jira远程链接管理

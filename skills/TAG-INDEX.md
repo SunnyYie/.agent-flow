@@ -48,7 +48,11 @@ created: 2026-04-16
 | gitlab | git/gitlab-mr-creation |
 | glab | git/gitlab-mr-creation |
 | impact-analysis | documentation/requirement-decomposition |
-| jira | integration/jira-workflow, integration/jira-quick-ops, integration/jira-remotelink |
+| jira | integration/mai-jira-cli, integration/jira-workflow, integration/jira-quick-ops, integration/jira-remotelink |
+| mai-jira-cli | integration/mai-jira-cli |
+| JiraClient | integration/mai-jira-cli |
+| jira认证 | integration/mai-jira-cli |
+| jira配置 | integration/mai-jira-cli |
 | knowledge-search | knowledge/knowledge-search |
 | markitdown | documentation/markitdown |
 | merge-request | git/gitlab-mr-creation |
