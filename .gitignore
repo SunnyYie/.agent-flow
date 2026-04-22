@@ -7,3 +7,4 @@ hooks/.agent-flow/*.db
 hooks/.agent-flow/state/*
 hooks/__pycache__/*
 *.db
+.agent-flow/
