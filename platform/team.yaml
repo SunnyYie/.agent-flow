@@ -1,0 +1,11 @@
+name: platform
+display_name: Platform Team
+role: core-infrastructure
+description: AgentFlow framework infrastructure, orchestration, governance, and core runtime assets.
+resource_roots:
+  hooks: hooks
+  wiki: wiki
+  skills: skills
+  souls: souls
+  references: references
+  tools: tools

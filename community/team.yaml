@@ -1,0 +1,11 @@
+name: community
+display_name: Community Team
+role: business-application
+description: Business-layer workflows, integrations, domain practices, and implementation assets built on AgentFlow.
+resource_roots:
+  hooks: hooks
+  wiki: wiki
+  skills: skills
+  souls: souls
+  references: references
+  tools: tools
